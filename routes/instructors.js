@@ -102,7 +102,22 @@ router.put('/:id', protect, requireRoles('admin'), (req, res) => {
       return res.status(404).json({ message: 'Instructor not found' });
     }
 
+    const previousName = item.name;
     const { name, email, department, bio, status } = req.body;
+    if (status !== undefined && !['active', 'on-leave'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid instructor status' });
+    }
+    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+      return res.status(400).json({ message: 'Instructor name is required' });
+    }
+    if (email !== undefined && (typeof email !== 'string' || !email.trim())) {
+      return res.status(400).json({ message: 'Instructor email is required' });
+    }
+    const nextEmail = email ? email.trim().toLowerCase() : item.email;
+    const emailOwner = db.get('users').find(user =>
+      user.id !== item.userId && user.email.toLowerCase() === nextEmail
+    ).value();
+    if (emailOwner) return res.status(400).json({ message: 'An account with this email already exists' });
     const updated = db.get('instructors')
       .find({ id })
       .assign({
@@ -114,6 +129,19 @@ router.put('/:id', protect, requireRoles('admin'), (req, res) => {
       })
       .write();
 
+    if (item.userId) {
+      db.get('users').find({ id: item.userId }).assign({
+        ...(name ? { name: name.trim() } : {}),
+        ...(email ? { email: nextEmail } : {})
+      }).write();
+    }
+    if (name && name.trim().toLowerCase() !== previousName.toLowerCase()) {
+      db.get('courses').value()
+        .filter(course => (course.instructor || '').toLowerCase() === previousName.toLowerCase())
+        .forEach(course => {
+          db.get('courses').find({ id: course.id }).assign({ instructor: name.trim() }).write();
+        });
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -131,6 +159,11 @@ router.delete('/:id', protect, requireRoles('admin'), (req, res) => {
 
     db.get('instructors').remove({ id }).write();
     if (item.userId) db.get('users').remove({ id: item.userId }).write();
+    db.get('courses').value()
+      .filter(course => (course.instructor || '').toLowerCase() === item.name.toLowerCase())
+      .forEach(course => {
+        db.get('courses').find({ id: course.id }).assign({ instructor: '' }).write();
+      });
     logActivity(`Instructor ${item.name} removed`);
     res.json({ success: true, message: 'Instructor removed successfully' });
   } catch (err) {

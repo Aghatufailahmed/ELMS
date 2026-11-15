@@ -164,94 +164,49 @@
 
   <!-- ══ CONTENT EDITOR ══ -->
   <section class="page" id="page-content">
+    <div class="page-toolbar">
+      <select class="glass-select" id="content-course-select" onchange="loadCourseContent()">
+        <option value="">Select a course</option>
+      </select>
+      <button class="btn-primary" id="add-lesson-button" onclick="newLesson()" disabled>+ Add Lesson</button>
+    </div>
     <div class="content-layout">
       <aside class="glass content-tree">
-        <div class="tree-header">
-          <span class="tree-title">Web Dev Basics</span>
-          <button class="text-btn">+ Module</button>
-        </div>
-        <ul class="module-list">
-          <li class="module-item">
-            <div class="module-head active-module" onclick="toggleModule(this)">
-              <span class="mod-arrow">&#9660;</span><span>Module 1 — HTML</span>
-            </div>
-            <ul class="lesson-list open">
-              <li class="lesson-item active-lesson" onclick="loadLesson(this,'Lesson 1.1 — Introduction to HTML')">Lesson 1.1 — Intro to HTML</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 1.2 — HTML Tags &amp; Elements')">Lesson 1.2 — Tags &amp; Elements</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 1.3 — Forms &amp; Inputs')">Lesson 1.3 — Forms &amp; Inputs</li>
-            </ul>
-          </li>
-          <li class="module-item">
-            <div class="module-head" onclick="toggleModule(this)">
-              <span class="mod-arrow">&#9654;</span><span>Module 2 — CSS</span>
-            </div>
-            <ul class="lesson-list">
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 2.1 — CSS Selectors')">Lesson 2.1 — CSS Selectors</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 2.2 — Box Model')">Lesson 2.2 — Box Model</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 2.3 — Flexbox')">Lesson 2.3 — Flexbox</li>
-            </ul>
-          </li>
-          <li class="module-item">
-            <div class="module-head" onclick="toggleModule(this)">
-              <span class="mod-arrow">&#9654;</span><span>Module 3 — JavaScript</span>
-            </div>
-            <ul class="lesson-list">
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 3.1 — Variables &amp; Types')">Lesson 3.1 — Variables &amp; Types</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 3.2 — Functions')">Lesson 3.2 — Functions</li>
-              <li class="lesson-item" onclick="loadLesson(this,'Lesson 3.3 — DOM Manipulation')">Lesson 3.3 — DOM</li>
-            </ul>
-          </li>
+        <div class="tree-header"><span class="tree-title">Course Lessons</span></div>
+        <ul class="module-list" id="content-lesson-list">
+          <li class="lesson-item">Select a course to manage its lessons.</li>
         </ul>
       </aside>
-
-      <div class="editor-pane glass">
+      <form class="editor-pane glass" id="lesson-form" onsubmit="saveLesson(event)">
         <div class="editor-toolbar">
-          <span class="editor-lesson-name" id="lessonName">Lesson 1.1 — Introduction to HTML</span>
+          <span class="editor-lesson-name" id="lessonName">New lesson</span>
           <div class="editor-actions">
-            <button class="btn-outline btn-sm">Preview</button>
-            <button class="btn-primary btn-sm">Save</button>
+            <button type="button" class="btn-danger btn-sm" id="delete-lesson-button" onclick="deleteLesson()" hidden>Delete</button>
+            <button type="submit" class="btn-primary btn-sm" id="save-lesson-button" disabled>Save Lesson</button>
           </div>
         </div>
         <div class="editor-meta-row">
-          <label>Type<select class="glass-select"><option>Video Lecture</option><option>Reading</option><option>Quiz</option><option>Assignment</option></select></label>
-          <label>Duration<input type="text" class="glass-input" value="25 minutes"/></label>
-          <label>Points<input type="number" class="glass-input" value="10"/></label>
+          <label>Type
+            <select class="glass-select" id="lesson-type">
+              <option>Reading</option><option>Video Lecture</option><option>Quiz</option><option>Assignment</option>
+            </select>
+          </label>
+          <label>Duration<input type="text" class="glass-input" id="lesson-duration" placeholder="e.g. 20 minutes"/></label>
+          <label>Points<input type="number" class="glass-input" id="lesson-points" min="0" max="1000" value="0"/></label>
         </div>
         <div class="editor-field">
-          <label class="field-label">Lesson Title</label>
-          <input type="text" class="glass-input full-w" id="lessonTitle" value="Introduction to HTML"/>
+          <label class="field-label" for="lesson-title">Lesson Title *</label>
+          <input type="text" class="glass-input full-w" id="lesson-title" required maxlength="200" />
         </div>
         <div class="editor-field">
-          <label class="field-label">Description</label>
-          <textarea class="glass-textarea" rows="3">In this lesson, students will learn the foundational concepts of HTML — what it is, how browsers interpret markup, and the anatomy of a basic HTML document.</textarea>
+          <label class="field-label" for="lesson-description">Description</label>
+          <textarea class="glass-textarea" id="lesson-description" rows="3" maxlength="2000"></textarea>
         </div>
         <div class="editor-field">
-          <label class="field-label">Content</label>
-          <div class="rich-toolbar">
-            <button class="rich-btn">B</button><button class="rich-btn"><i>I</i></button>
-            <button class="rich-btn"><u>U</u></button><button class="rich-btn">H1</button>
-            <button class="rich-btn">H2</button><button class="rich-btn">— List</button>
-            <button class="rich-btn">Link</button><button class="rich-btn">Code</button>
-          </div>
-          <div class="rich-editor glass-input" contenteditable="true">
-            <h3>What is HTML?</h3>
-            <p>HTML (HyperText Markup Language) is the standard language for creating web pages. It describes the structure of a web page using a series of elements represented as tags.</p>
-            <h3>Basic Document Structure</h3>
-            <pre><code>&lt;!DOCTYPE html&gt;
-&lt;html&gt;
-  &lt;head&gt;&lt;title&gt;My Page&lt;/title&gt;&lt;/head&gt;
-  &lt;body&gt;&lt;h1&gt;Hello, World!&lt;/h1&gt;&lt;/body&gt;
-&lt;/html&gt;</code></pre>
-          </div>
+          <label class="field-label" for="lesson-content">Lesson Content</label>
+          <textarea class="glass-textarea" id="lesson-content" rows="12" maxlength="50000" placeholder="Write the lesson content students will see."></textarea>
         </div>
-        <div class="editor-field">
-          <label class="field-label">Attachments</label>
-          <div class="upload-zone">
-            <p>Drag files here or <span class="link-text" onclick="document.getElementById('fileInput').click()">browse</span></p>
-            <input type="file" id="fileInput" style="display:none" multiple/>
-          </div>
-        </div>
-      </div>
+      </form>
     </div>
   </section>
 
@@ -293,28 +248,25 @@
   <!-- ══ ANALYTICS ══ -->
   <section class="page" id="page-analytics">
     <div class="stats-row">
-      <div class="stat-card glass"><div class="stat-label">Total Revenue</div><div class="stat-value" id="stat-revenue">—</div><div class="stat-sub">Estimated earnings</div></div>
-      <div class="stat-card glass"><div class="stat-label">Avg. Time on Platform</div><div class="stat-value" id="stat-avg-time">—</div><div class="stat-sub">Per student / day</div></div>
-      <div class="stat-card glass"><div class="stat-label">Quiz Pass Rate</div><div class="stat-value" id="stat-quiz-pass">—</div><div class="stat-sub">Across all quizzes</div></div>
-      <div class="stat-card glass"><div class="stat-label">Drop-off Rate</div><div class="stat-value" id="stat-dropoff">—</div><div class="stat-sub">Down vs last month</div></div>
+      <div class="stat-card glass"><div class="stat-label">Revenue</div><div class="stat-value" id="stat-revenue">—</div><div class="stat-sub">Billing is not configured</div></div>
+      <div class="stat-card glass"><div class="stat-label">Avg. Time on Platform</div><div class="stat-value" id="stat-avg-time">—</div><div class="stat-sub">Time tracking is not configured</div></div>
+      <div class="stat-card glass"><div class="stat-label">Quiz Pass Rate</div><div class="stat-value" id="stat-quiz-pass">—</div><div class="stat-sub">Graded quizzes; passing score is 50% or higher</div></div>
+      <div class="stat-card glass"><div class="stat-label">Low Progress (&lt;10%)</div><div class="stat-value" id="stat-dropoff">—</div><div class="stat-sub">Students currently below 10% progress</div></div>
     </div>
 
     <div class="dash-grid">
       <div class="glass panel">
-        <div class="panel-head"><h2 class="panel-title">Monthly Enrollments</h2></div>
+        <div class="panel-head"><h2 class="panel-title">New Student Accounts</h2></div>
         <div class="chart-wrap">
           <div class="bar-chart" id="bar-chart"></div>
         </div>
       </div>
       <div class="glass panel">
-        <div class="panel-head"><h2 class="panel-title">Enrollment by Category</h2></div>
+        <div class="panel-head"><h2 class="panel-title">Courses by Category</h2></div>
         <div class="donut-wrap">
           <svg viewBox="0 0 120 120" class="donut-svg">
             <circle cx="60" cy="60" r="45" fill="none" stroke="rgba(15,23,42,0.06)" stroke-width="20"/>
-            <circle cx="60" cy="60" r="45" fill="none" stroke="rgba(15,23,42,0.85)" stroke-width="20" stroke-dasharray="113 170" stroke-dashoffset="0"/>
-            <circle cx="60" cy="60" r="45" fill="none" stroke="rgba(15,23,42,0.55)" stroke-width="20" stroke-dasharray="68 215" stroke-dashoffset="-113"/>
-            <circle cx="60" cy="60" r="45" fill="none" stroke="rgba(15,23,42,0.32)" stroke-width="20" stroke-dasharray="51 232" stroke-dashoffset="-181"/>
-            <circle cx="60" cy="60" r="45" fill="none" stroke="rgba(15,23,42,0.16)" stroke-width="20" stroke-dasharray="34 249" stroke-dashoffset="-232"/>
+            <g id="donut-segments" transform="rotate(-90 60 60)"></g>
           </svg>
           <div class="donut-legend" id="donut-legend"></div>
         </div>
@@ -324,7 +276,7 @@
     <div class="glass panel mt-1">
       <div class="panel-head"><h2 class="panel-title">Top Performing Courses</h2></div>
       <table class="data-table">
-        <thead><tr><th>Course</th><th>Students</th><th>Completion</th><th>Avg Score</th><th>Revenue</th><th>Rating</th></tr></thead>
+        <thead><tr><th>Course</th><th>Students</th><th>Completion</th><th>Avg Score</th><th>Revenue (not tracked)</th><th>Rating (not tracked)</th></tr></thead>
         <tbody id="top-courses-tbody"></tbody>
       </table>
     </div>
@@ -334,34 +286,13 @@
   <section class="page" id="page-settings">
     <div class="settings-grid">
       <div class="glass panel">
-        <div class="panel-head"><h2 class="panel-title">Platform Settings</h2></div>
-        <div class="settings-group"><label class="settings-label">Platform Name</label><input type="text" class="glass-input full-w" value="EduFlow LMS"/></div>
-        <div class="settings-group"><label class="settings-label">Contact Email</label><input type="email" class="glass-input full-w" value="admin@eduflow.io"/></div>
-        <div class="settings-group"><label class="settings-label">Default Language</label>
-          <select class="glass-select full-w"><option>English</option><option>Urdu</option><option>Arabic</option></select>
-        </div>
-        <div class="settings-group"><label class="settings-label">Timezone</label>
-          <select class="glass-select full-w"><option>Asia/Karachi (PKT)</option><option>UTC</option><option>US/Eastern</option></select>
-        </div>
-        <div class="settings-toggles">
-          <div class="toggle-row"><span>Allow student self-enrollment</span><label class="toggle"><input type="checkbox" checked/><span class="toggle-track"></span></label></div>
-          <div class="toggle-row"><span>Send email notifications</span><label class="toggle"><input type="checkbox" checked/><span class="toggle-track"></span></label></div>
-          <div class="toggle-row"><span>Enable course reviews</span><label class="toggle"><input type="checkbox"/><span class="toggle-track"></span></label></div>
-          <div class="toggle-row"><span>Require approval for new courses</span><label class="toggle"><input type="checkbox" checked/><span class="toggle-track"></span></label></div>
-        </div>
-        <button class="btn-primary mt-1" onclick="showToast('Settings saved')">Save Changes</button>
-      </div>
-
-      <div class="glass panel">
         <div class="panel-head"><h2 class="panel-title">Account</h2></div>
         <div class="profile-preview">
           <div class="profile-avatar" id="settings-avatar">—</div>
           <div><p class="user-name" id="settings-name">—</p><p class="user-role" id="settings-role">—</p></div>
         </div>
-        <div class="settings-group"><label class="settings-label">Full Name</label><input type="text" class="glass-input full-w" id="settings-name-input"/></div>
-        <div class="settings-group"><label class="settings-label">Email</label><input type="email" class="glass-input full-w" id="settings-email-input"/></div>
-        <div class="settings-group"><label class="settings-label">New Password</label><input type="password" class="glass-input full-w" placeholder="Leave blank to keep current"/></div>
-        <button class="btn-primary mt-1" onclick="showToast('Account updated')">Update Account</button>
+        <p id="settings-email-display"></p>
+        <p>For account or password changes, contact the platform administrator.</p>
       </div>
     </div>
   </section>

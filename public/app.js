@@ -2,23 +2,16 @@
 
 // ── Auth Guard ──────────────────────────────────────
 const token = localStorage.getItem('eduflow_token');
-if (!token) {
-  window.location.href = '/';
-}
 
 let currentUser = null;
-try {
-  currentUser = JSON.parse(localStorage.getItem('eduflow_user')) || {};
-} catch (_) {
-  currentUser = {};
-}
+try { currentUser = JSON.parse(localStorage.getItem('eduflow_user')) || {}; } catch (_) { currentUser = {}; }
 
-const rolePages = {
+let rolePages = {
   admin: ['dashboard', 'courses', 'instructors', 'content', 'students', 'assignments', 'analytics', 'settings'],
-  instructor: ['dashboard', 'courses', 'students', 'assignments', 'settings'],
+  instructor: ['dashboard', 'courses', 'content', 'students', 'assignments', 'settings'],
   student: ['dashboard', 'courses', 'assignments', 'settings']
 };
-const allowedPages = rolePages[currentUser.role] || rolePages.student;
+let allowedPages = rolePages[currentUser.role] || rolePages.student;
 
 // ── Init user display ───────────────────────────────
 function initUser() {
@@ -38,8 +31,7 @@ function initUser() {
   const setAvatar = document.getElementById('settings-avatar');
   const setName = document.getElementById('settings-name');
   const setRole = document.getElementById('settings-role');
-  const setNameInput = document.getElementById('settings-name-input');
-  const setEmailInput = document.getElementById('settings-email-input');
+  const setEmail = document.getElementById('settings-email-display');
 
   if (sName) sName.textContent = name;
   if (sRole) sRole.textContent = role;
@@ -48,8 +40,7 @@ function initUser() {
   if (setAvatar) setAvatar.textContent = initials;
   if (setName) setName.textContent = name;
   if (setRole) setRole.textContent = role;
-  if (setNameInput) setNameInput.value = name;
-  if (setEmailInput) setEmailInput.value = currentUser.email || 'admin@eduflow.io';
+  if (setEmail) setEmail.textContent = currentUser.email || '';
 
   document.querySelectorAll('.nav-item').forEach(item => {
     item.hidden = !allowedPages.includes(item.dataset.page);
@@ -57,12 +48,24 @@ function initUser() {
   document.querySelectorAll('.page').forEach(page => {
     page.hidden = !allowedPages.includes(page.id.replace('page-', ''));
   });
-  const platformSettings = document.querySelector('.settings-grid > .panel:first-child');
-  if (platformSettings) platformSettings.hidden = currentUser.role !== 'admin';
   const addInstructorButton = document.querySelector('#page-instructors .page-toolbar > button');
   if (addInstructorButton) addInstructorButton.hidden = currentUser.role !== 'admin';
   const addStudentButton = document.querySelector('#page-students .page-toolbar > button');
   if (addStudentButton) addStudentButton.hidden = !['admin', 'instructor'].includes(currentUser.role);
+  const addCourseButton = document.querySelector('#page-courses .page-toolbar > button');
+  if (addCourseButton) addCourseButton.hidden = currentUser.role !== 'admin';
+  const studentStatusFilter = document.getElementById('student-filter-status');
+  if (studentStatusFilter) studentStatusFilter.hidden = currentUser.role !== 'admin';
+  const studentStatusHeader = document.querySelector('#page-students th:nth-child(6)');
+  if (studentStatusHeader) studentStatusHeader.hidden = currentUser.role !== 'admin';
+  const instructorStatusFilter = document.getElementById('instructor-filter-status');
+  if (instructorStatusFilter) instructorStatusFilter.hidden = currentUser.role !== 'admin';
+  const instructorBioHeader = document.querySelector('#page-instructors th:nth-child(4)');
+  const instructorStatusHeader = document.querySelector('#page-instructors th:nth-child(6)');
+  const instructorJoinedHeader = document.querySelector('#page-instructors th:nth-child(7)');
+  if (instructorBioHeader) instructorBioHeader.hidden = currentUser.role !== 'admin';
+  if (instructorStatusHeader) instructorStatusHeader.hidden = currentUser.role !== 'admin';
+  if (instructorJoinedHeader) instructorJoinedHeader.hidden = currentUser.role !== 'admin';
   const addAssignmentButton = document.querySelector('#page-assignments .page-toolbar > button');
   if (addAssignmentButton) addAssignmentButton.hidden = currentUser.role === 'student';
   const courseStatusFilter = document.getElementById('course-filter-status');
@@ -166,6 +169,7 @@ function navigate(pageId) {
   if (pageId === 'students')    loadStudents();
   if (pageId === 'assignments') loadAssignments();
   if (pageId === 'analytics')   loadAnalytics();
+  if (pageId === 'content')     loadContentEditor();
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -210,7 +214,7 @@ async function loadDashboard() {
               <td><strong>${escapeHtml(c.title)}</strong></td>
               <td>${escapeHtml(c.instructor || 'Unassigned')}</td>
               <td>${c.lessons || 0} Lessons</td>
-              <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+              <td${currentUser.role === 'admin' ? '' : ' hidden'}><span class="badge ${statusClass}">${statusLabel}</span></td>
             </tr>
           `;
         }).join('');
@@ -379,20 +383,63 @@ function renderCourses(courses) {
           <span>${c.enrolledStudents || 0} Students</span>
           <span>${escapeHtml(c.duration || 'Self-paced')}</span>
         </div>
+        ${currentUser.role === 'student' && c.isEnrolled ? `
+          <div class="mini-progress"><div class="mini-bar" style="width:${Math.max(0, Math.min(100, Number(c.progress) || 0))}%"></div></div>
+          <small>${Math.max(0, Math.min(100, Number(c.progress) || 0))}% complete</small>` : ''}
         <div class="course-actions">
           ${currentUser.role === 'student'
             ? (c.isEnrolled
-              ? '<span class="badge badge-active">Enrolled</span>'
+              ? `<button class="btn-outline btn-sm" onclick="openStudentCourse('${c.id}')">View Lessons</button>`
               : `<button class="btn-primary btn-sm" onclick="enrollCourse('${c.id}')">Enroll</button>`)
             : currentUser.role === 'admin'
               ? `<button class="btn-outline btn-sm" onclick="toggleCourseStatus('${c.id}')">${c.status === 'active' ? 'Unpublish' : 'Publish'}</button>
-                 <button class="btn-outline btn-sm" onclick="navigate('content')">Edit Content</button>
+                 <button class="btn-outline btn-sm" onclick="openCourseEditor('${c.id}')">Edit Lessons</button>
                  <button class="btn-danger btn-sm" onclick="deleteCourse('${c.id}')">Delete</button>`
-              : ''}
+              : `<button class="btn-outline btn-sm" onclick="openCourseEditor('${c.id}')">Edit Lessons</button>`}
         </div>
       </div>
     `;
   }).join('');
+}
+
+async function openCourseEditor(id) {
+  navigate('content');
+  await loadContentEditor();
+  const select = document.getElementById('content-course-select');
+  select.value = id;
+  await loadCourseContent();
+}
+
+async function openStudentCourse(id) {
+  try {
+    const course = await api(`/courses/${id}`);
+    const completed = new Set(course.completedLessonIds || []);
+    document.getElementById('modalTitle').textContent = course.title;
+    document.getElementById('modalBody').innerHTML = course.lessons.length
+      ? course.lessons.map(lesson => `
+        <article class="glass panel" style="margin-bottom:12px;padding:16px;">
+          <h3>${escapeHtml(lesson.title)}</h3>
+          <p>${escapeHtml(lesson.description || '')}</p>
+          <pre style="white-space:pre-wrap;margin:12px 0;">${escapeHtml(lesson.content || 'No lesson content yet.')}</pre>
+          <button class="${completed.has(lesson.id) ? 'btn-outline' : 'btn-primary'} btn-sm"
+            onclick="completeLesson('${course.id}','${lesson.id}')">${completed.has(lesson.id) ? 'Completed' : 'Mark Complete'}</button>
+        </article>`).join('')
+      : '<p>This course does not have any lessons yet.</p>';
+    document.getElementById('modalOverlay').classList.add('open');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function completeLesson(courseId, lessonId) {
+  try {
+    await api(`/courses/${courseId}/lessons/${lessonId}/complete`, { method: 'POST' });
+    showToast('Lesson marked complete');
+    await openStudentCourse(courseId);
+    loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function enrollCourse(id) {
@@ -490,11 +537,25 @@ function renderInstructors(instructors) {
         <td><span class="badge ${statusClass}">${statusLabel}</span></td>
         <td style="color:var(--text-muted);font-size:12px;">${joinedDate}</td>
         <td>
+          <button class="btn-outline btn-sm" onclick="toggleInstructorStatus('${inst.id}')">${inst.status === 'active' ? 'Suspend' : 'Reactivate'}</button>
           <button class="btn-danger btn-sm" onclick="deleteInstructor('${inst.id}')">Delete</button>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+async function toggleInstructorStatus(id) {
+  const instructor = allInstructors.find(item => item.id === id);
+  if (!instructor) return;
+  const status = instructor.status === 'active' ? 'on-leave' : 'active';
+  try {
+    await api(`/instructors/${id}`, { method: 'PUT', body: { status } });
+    showToast(status === 'active' ? 'Instructor access restored' : 'Instructor access suspended');
+    await loadInstructors();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function deleteInstructor(id) {
@@ -555,11 +616,26 @@ function renderStudents(students) {
           </div>
         </td>
         <td>${s.joined_at || 'Recently'}</td>
-        <td><span class="badge ${statusClass}">${statusLabel}</span></td>
-        <td>${currentUser.role === 'admin' ? `<button class="btn-danger btn-sm" onclick="deleteStudent('${s.id}')">Delete</button>` : ''}</td>
+        <td${currentUser.role === 'admin' ? '' : ' hidden'}><span class="badge ${statusClass}">${statusLabel}</span></td>
+        <td>${currentUser.role === 'admin' ? `
+          <button class="btn-outline btn-sm" onclick="toggleStudentStatus('${s.id}')">${s.status === 'inactive' ? 'Activate' : 'Suspend'}</button>
+          <button class="btn-danger btn-sm" onclick="deleteStudent('${s.id}')">Delete</button>` : ''}</td>
       </tr>
     `;
   }).join('');
+}
+
+async function toggleStudentStatus(id) {
+  const student = allStudents.find(item => item.id === id);
+  if (!student) return;
+  const status = student.status === 'inactive' ? 'active' : 'inactive';
+  try {
+    await api(`/students/${id}`, { method: 'PUT', body: { status } });
+    showToast(status === 'active' ? 'Student account activated' : 'Student account suspended');
+    await loadStudents();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function deleteStudent(id) {
@@ -604,6 +680,17 @@ function renderAssignments(assignments) {
     let typeClass = '';
     if (a.type === 'Assignment') typeClass = 'asgn-assignment';
     else if (a.type === 'Project') typeClass = 'asgn-project';
+    const submission = a.mySubmission;
+    const action = currentUser.role === 'student'
+      ? `<div><span class="badge ${submission && submission.score !== undefined ? 'badge-active' : 'badge-review'}">${
+          submission && submission.score !== undefined ? `Graded: ${submission.score}/${a.max_points}` : submission ? 'Submitted' : 'Not submitted'
+        }</span>
+        ${submission && submission.score !== undefined ? `<p>${escapeHtml(submission.feedback || '')}</p>` : ''}
+        ${!submission || submission.score === undefined ? `<button class="btn-primary btn-sm" onclick="openSubmissionForm('${a.id}')">${submission ? 'Update Submission' : 'Submit'}</button>` : ''}
+      </div>`
+      : currentUser.role === 'instructor'
+        ? `<button class="btn-outline btn-sm" onclick="openAssignmentReview('${a.id}')">Review (${(a.submissions || []).filter(item => item.score === undefined).length})</button>`
+        : `<button class="btn-danger btn-sm" onclick="deleteAssignment('${a.id}')">Delete</button>`;
 
     return `
       <div class="glass assignment-row" data-id="${a.id}">
@@ -616,26 +703,106 @@ function renderAssignments(assignments) {
         </div>
         <div class="asgn-stats">
           <div class="asgn-stat">
-            <span class="asgn-stat-val">${a.submitted || 0}</span>
-            <span class="asgn-stat-label">Submitted</span>
+            <span class="asgn-stat-val">${currentUser.role === 'student' ? a.max_points : (a.submitted || 0)}</span>
+            <span class="asgn-stat-label">${currentUser.role === 'student' ? 'Points possible' : 'Submitted'}</span>
           </div>
           <div class="asgn-stat">
-            <span class="asgn-stat-val">${a.pending || 0}</span>
-            <span class="asgn-stat-label">Pending</span>
+            <span class="asgn-stat-val">${currentUser.role === 'student'
+              ? (submission && submission.score !== undefined ? submission.score : '—')
+              : (a.pending || 0)}</span>
+            <span class="asgn-stat-label">${currentUser.role === 'student' ? 'My score' : 'Awaiting review'}</span>
           </div>
           <div class="asgn-stat">
-            <span class="asgn-stat-val">${a.avg_score ? a.avg_score + '%' : '—'}</span>
-            <span class="asgn-stat-label">Avg Score</span>
+            <span class="asgn-stat-val">${currentUser.role === 'student'
+              ? (submission && submission.submitted_at ? new Date(submission.submitted_at).toLocaleDateString() : '—')
+              : (a.submissions || []).filter(item => item.score !== undefined).length}</span>
+            <span class="asgn-stat-label">${currentUser.role === 'student' ? 'Submitted' : 'Graded'}</span>
           </div>
         </div>
         <div class="asgn-due">
           <span class="due-label">Due Date</span>
           <span class="due-date">${a.due_date || 'Flexible'}</span>
         </div>
-        ${currentUser.role === 'admin' ? `<button class="btn-danger btn-sm" onclick="deleteAssignment('${a.id}')">Delete</button>` : ''}
+        ${action}
       </div>
     `;
   }).join('');
+}
+
+function openSubmissionForm(id) {
+  const assignment = allAssignments.find(item => item.id === id);
+  if (!assignment) return;
+  document.getElementById('modalTitle').textContent = `Submit: ${assignment.title}`;
+  document.getElementById('modalBody').innerHTML = `
+    <form onsubmit="submitAssignment(event,'${assignment.id}')">
+      <div class="modal-field">
+        <label for="submission-answer">Your answer *</label>
+        <textarea class="glass-textarea" id="submission-answer" rows="10" maxlength="20000" required>${escapeHtml(assignment.mySubmission?.answer || '')}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Submit Assignment</button>
+      </div>
+    </form>`;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function submitAssignment(event, id) {
+  event.preventDefault();
+  try {
+    await api(`/assignments/${id}/submissions`, {
+      method: 'POST',
+      body: { answer: document.getElementById('submission-answer').value }
+    });
+    closeModal();
+    showToast('Assignment submitted');
+    await loadAssignments();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function openAssignmentReview(id) {
+  const assignment = allAssignments.find(item => item.id === id);
+  if (!assignment) return;
+  document.getElementById('modalTitle').textContent = `Submissions: ${assignment.title}`;
+  const submissions = assignment.submissions || [];
+  document.getElementById('modalBody').innerHTML = submissions.length
+    ? submissions.map(item => `
+      <form class="glass panel" style="padding:16px;margin-bottom:12px;" onsubmit="gradeSubmission(event,'${assignment.id}','${item.studentId}')">
+        <strong>${escapeHtml(item.studentName)}</strong>
+        <p style="white-space:pre-wrap;margin:10px 0;">${escapeHtml(item.answer)}</p>
+        <div class="modal-field">
+          <label>Score (out of ${assignment.max_points})</label>
+          <input class="glass-input full-w" type="number" name="score" min="0" max="${assignment.max_points}" value="${item.score ?? ''}" required />
+        </div>
+        <div class="modal-field">
+          <label>Feedback</label>
+          <textarea class="glass-textarea" name="feedback" rows="2">${escapeHtml(item.feedback || '')}</textarea>
+        </div>
+        <button class="btn-primary btn-sm" type="submit">Save Grade</button>
+      </form>`).join('')
+    : '<p>No submissions yet.</p>';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function gradeSubmission(event, assignmentId, studentId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await api(`/assignments/${assignmentId}/submissions/${studentId}`, {
+      method: 'PUT',
+      body: {
+        score: Number(form.elements.score.value),
+        feedback: form.elements.feedback.value
+      }
+    });
+    showToast('Grade saved');
+    await loadAssignments();
+    openAssignmentReview(assignmentId);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function deleteAssignment(id) {
@@ -660,10 +827,10 @@ async function loadAnalytics() {
     const passEl = document.getElementById('stat-quiz-pass');
     const dropEl = document.getElementById('stat-dropoff');
 
-    if (revEl) revEl.textContent = '$' + (data.revenue || 0).toLocaleString();
-    if (timeEl) timeEl.textContent = data.avgTime || '2h 14m';
-    if (passEl) passEl.textContent = (data.quizPassRate || 84) + '%';
-    if (dropEl) dropEl.textContent = (data.dropoffRate || 11) + '%';
+    if (revEl) revEl.textContent = data.revenue === null ? '—' : '$' + Number(data.revenue || 0).toLocaleString();
+    if (timeEl) timeEl.textContent = data.avgTime || '—';
+    if (passEl) passEl.textContent = `${data.quizPassRate}%`;
+    if (dropEl) dropEl.textContent = `${data.dropoffRate}%`;
 
     // Bar chart
     const chartEl = document.getElementById('bar-chart');
@@ -672,7 +839,7 @@ async function loadAnalytics() {
       const max = Math.max(...counts, 1);
 
       chartEl.innerHTML = data.monthlyEnrollments.map((m, idx) => {
-        const heightPct = Math.max(Math.round((m.count / max) * 100), 12);
+        const heightPct = m.count ? Math.round((m.count / max) * 100) : 0;
         const isLast = idx === data.monthlyEnrollments.length - 1;
         return `
           <div class="bar-group">
@@ -685,13 +852,23 @@ async function loadAnalytics() {
 
     // Donut Legend
     const legendEl = document.getElementById('donut-legend');
+    const segmentsEl = document.getElementById('donut-segments');
     if (legendEl && data.categoryBreakdown) {
-      const opacities = ['0.85', '0.55', '0.32', '0.16'];
+      const colors = ['#0f172a', '#2563eb', '#0d9488', '#d97706', '#9333ea', '#dc2626'];
+      const circumference = 2 * Math.PI * 45;
+      let offset = 0;
+      if (segmentsEl) {
+        segmentsEl.innerHTML = data.categoryBreakdown.map((cat, i) => {
+          const length = circumference * cat.pct / 100;
+          const segment = `<circle cx="60" cy="60" r="45" fill="none" stroke="${colors[i % colors.length]}" stroke-width="20" stroke-dasharray="${length} ${circumference - length}" stroke-dashoffset="${-offset}"/>`;
+          offset += length;
+          return segment;
+        }).join('');
+      }
       legendEl.innerHTML = data.categoryBreakdown.map((cat, i) => {
-        const op = opacities[i % opacities.length];
         return `
           <div class="legend-row">
-            <span class="legend-dot" style="background:rgba(15,23,42,${op})"></span>
+            <span class="legend-dot" style="background:${colors[i % colors.length]}"></span>
             ${escapeHtml(cat.category)} — ${cat.pct}%
           </div>
         `;
@@ -713,9 +890,9 @@ async function loadAnalytics() {
                 <div class="mini-bar" style="width: ${c.completion}%"></div>
               </div>
             </td>
-            <td>${c.avgScore ? c.avgScore + '%' : '—'}</td>
-            <td>$${(c.revenue || 0).toLocaleString()}</td>
-            <td>${c.rating ? c.rating + ' / 5' : '—'}</td>
+            <td>${c.avgScore == null ? '—' : c.avgScore + '%'}</td>
+            <td>${c.revenue == null ? '—' : '$' + Number(c.revenue).toLocaleString()}</td>
+            <td>${c.rating == null ? '—' : c.rating + ' / 5'}</td>
           </tr>
         `).join('');
       }
@@ -759,11 +936,8 @@ const modalTemplates = {
           </select>
         </div>
         <div class="modal-field">
-          <label>Duration &amp; Lessons</label>
-          <div style="display:flex;gap:10px;">
-            <input class="glass-input full-w" id="nc-duration" type="text" placeholder="e.g. 6 Weeks" />
-            <input class="glass-input full-w" id="nc-lessons" type="number" placeholder="Number of lessons" value="12" />
-          </div>
+          <label>Duration</label>
+          <input class="glass-input full-w" id="nc-duration" type="text" placeholder="e.g. 6 Weeks" />
         </div>
         <div class="modal-field">
           <label>Short Description</label>
@@ -852,8 +1026,8 @@ const modalTemplates = {
           </select>
         </div>
         <div class="modal-field">
-          <label>Associated Course Name</label>
-          <input class="glass-input full-w" id="na-course" type="text" placeholder="e.g. Web Development Basics" />
+          <label>Course *</label>
+          <select class="glass-select full-w" id="na-courseId" required></select>
         </div>
         <div class="modal-field">
           <label>Due Date</label>
@@ -861,7 +1035,7 @@ const modalTemplates = {
         </div>
         <div class="modal-field">
           <label>Max Points</label>
-          <input class="glass-input full-w" id="na-points" type="number" value="100" />
+          <input class="glass-input full-w" id="na-points" type="number" min="1" max="10000" value="100" required />
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
@@ -879,7 +1053,7 @@ async function openModal(type) {
   document.getElementById('modalBody').innerHTML = tmpl.html;
   document.getElementById('modalOverlay').classList.add('open');
 
-  if (type === 'addCourse' || type === 'addStudent') {
+  if (type === 'addCourse' || type === 'addStudent' || type === 'addAssignment') {
     try {
       if (type === 'addCourse' && (!allInstructors || allInstructors.length === 0)) {
         allInstructors = await api('/instructors');
@@ -887,9 +1061,10 @@ async function openModal(type) {
       if (type === 'addCourse') {
         const dl = document.getElementById('instructor-datalist');
         if (dl && allInstructors && allInstructors.length > 0) {
-          dl.innerHTML = allInstructors.map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.department || '')}</option>`).join('');
+          dl.innerHTML = allInstructors.filter(i => i.status === 'active')
+            .map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.department || '')}</option>`).join('');
         }
-      } else {
+      } else if (type === 'addStudent') {
         const courses = await api('/courses');
         const courseSelect = document.getElementById('ns-courseIds');
         if (courseSelect) {
@@ -901,6 +1076,16 @@ async function openModal(type) {
             .filter(course => course.status === 'active')
             .map(course => `<option value="${escapeHtml(course.id)}">${escapeHtml(course.title)}</option>`)
             .join('');
+        }
+      } else {
+        const courses = await api('/courses');
+        const courseSelect = document.getElementById('na-courseId');
+        courseSelect.innerHTML = courses.map(course =>
+          `<option value="${escapeHtml(course.id)}">${escapeHtml(course.title)}</option>`
+        ).join('');
+        if (!courses.length) {
+          courseSelect.innerHTML = '<option value="">No courses available</option>';
+          courseSelect.disabled = true;
         }
       }
     } catch (e) {
@@ -927,7 +1112,6 @@ async function handleCreateCourse(e) {
     category: document.getElementById('nc-category').value,
     level: document.getElementById('nc-level').value,
     duration: document.getElementById('nc-duration').value.trim(),
-    lessons: parseInt(document.getElementById('nc-lessons').value) || 0,
     description: document.getElementById('nc-description').value.trim()
   };
 
@@ -985,7 +1169,7 @@ async function handleCreateAssignment(e) {
   const body = {
     title: document.getElementById('na-title').value.trim(),
     type: document.getElementById('na-type').value,
-    course_name: document.getElementById('na-course').value.trim(),
+    courseId: document.getElementById('na-courseId').value,
     due_date: document.getElementById('na-due').value,
     max_points: parseInt(document.getElementById('na-points').value) || 100
   };
@@ -1001,44 +1185,133 @@ async function handleCreateAssignment(e) {
 }
 
 // ── Content Editor Functions ────────────────────────
-function toggleModule(el) {
-  const lessonList = el.nextElementSibling;
-  const arrow = el.querySelector('.mod-arrow');
-  if (!lessonList) return;
+let currentLessonId = null;
+let currentCourseLessons = [];
 
-  const isOpen = lessonList.classList.contains('open');
-  lessonList.classList.toggle('open', !isOpen);
-  if (arrow) arrow.innerHTML = isOpen ? '&#9654;' : '&#9660;';
-  el.classList.toggle('active-module', !isOpen);
+async function loadContentEditor() {
+  const select = document.getElementById('content-course-select');
+  if (!select) return;
+  try {
+    const courses = await api('/courses');
+    const selectedId = select.value;
+    select.innerHTML = '<option value="">Select a course</option>' + courses.map(course =>
+      `<option value="${escapeHtml(course.id)}">${escapeHtml(course.title)}</option>`
+    ).join('');
+    if (courses.some(course => course.id === selectedId)) select.value = selectedId;
+    if (select.value) await loadCourseContent();
+    else resetLessonEditor('Select a course to manage its lessons.');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
-function loadLesson(el, name) {
-  document.querySelectorAll('.lesson-item').forEach(li => li.classList.remove('active-lesson'));
-  el.classList.add('active-lesson');
-  const lName = document.getElementById('lessonName');
-  const lTitle = document.getElementById('lessonTitle');
-  if (lName) lName.textContent = name;
-  if (lTitle) lTitle.value = name;
-}
-
-// Rich editor formatting
-document.querySelectorAll('.rich-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const label = btn.textContent.trim();
-    const cmds = {
-      'B': ['bold'],
-      'I': ['italic'],
-      'U': ['underline'],
-      'H1': ['formatBlock', 'h1'],
-      'H2': ['formatBlock', 'h2'],
-      '— List': ['insertUnorderedList']
-    };
-    const cmd = cmds[label];
-    if (cmd) {
-      document.execCommand(cmd[0], false, cmd[1] || null);
+async function loadCourseContent() {
+  const courseId = document.getElementById('content-course-select').value;
+  const addButton = document.getElementById('add-lesson-button');
+  if (!courseId) {
+    currentCourseLessons = [];
+    resetLessonEditor('Select a course to manage its lessons.');
+    return;
+  }
+  try {
+    const course = await api(`/courses/${courseId}`);
+    currentCourseLessons = course.lessons || [];
+    document.getElementById('content-lesson-list').innerHTML = currentCourseLessons.length
+      ? currentCourseLessons.map(lesson => `
+        <li class="lesson-item${lesson.id === currentLessonId ? ' active-lesson' : ''}">
+          <button type="button" class="btn-outline btn-sm" onclick="selectLesson('${lesson.id}')">${escapeHtml(lesson.title)}</button>
+        </li>`).join('')
+      : '<li class="lesson-item">No lessons yet. Add the first lesson.</li>';
+    addButton.disabled = false;
+    if (currentLessonId && currentCourseLessons.some(lesson => lesson.id === currentLessonId)) {
+      populateLessonEditor(currentCourseLessons.find(lesson => lesson.id === currentLessonId));
+    } else {
+      currentLessonId = null;
+      resetLessonEditor('Select a lesson or add a new lesson.');
     }
-  });
-});
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function resetLessonEditor(message) {
+  currentLessonId = null;
+  document.getElementById('content-lesson-list').innerHTML = `<li class="lesson-item">${escapeHtml(message)}</li>`;
+  document.getElementById('lessonName').textContent = 'New lesson';
+  document.getElementById('lesson-title').value = '';
+  document.getElementById('lesson-description').value = '';
+  document.getElementById('lesson-content').value = '';
+  document.getElementById('lesson-type').value = 'Reading';
+  document.getElementById('lesson-duration').value = '';
+  document.getElementById('lesson-points').value = '0';
+  document.getElementById('save-lesson-button').disabled = !document.getElementById('content-course-select').value;
+  document.getElementById('delete-lesson-button').hidden = true;
+  document.getElementById('add-lesson-button').disabled = !document.getElementById('content-course-select').value;
+}
+
+function populateLessonEditor(lesson) {
+  currentLessonId = lesson.id;
+  document.getElementById('lessonName').textContent = lesson.title;
+  document.getElementById('lesson-title').value = lesson.title;
+  document.getElementById('lesson-description').value = lesson.description || '';
+  document.getElementById('lesson-content').value = lesson.content || '';
+  document.getElementById('lesson-type').value = lesson.type || 'Reading';
+  document.getElementById('lesson-duration').value = lesson.duration || '';
+  document.getElementById('lesson-points').value = lesson.points || 0;
+  document.getElementById('save-lesson-button').disabled = false;
+  document.getElementById('delete-lesson-button').hidden = false;
+}
+
+function selectLesson(id) {
+  const lesson = currentCourseLessons.find(item => item.id === id);
+  if (!lesson) return;
+  populateLessonEditor(lesson);
+  loadCourseContent();
+}
+
+function newLesson() {
+  currentLessonId = null;
+  resetLessonEditor('New lesson');
+  document.getElementById('lesson-title').focus();
+}
+
+async function saveLesson(event) {
+  event.preventDefault();
+  const courseId = document.getElementById('content-course-select').value;
+  if (!courseId) return;
+  const body = {
+    title: document.getElementById('lesson-title').value.trim(),
+    description: document.getElementById('lesson-description').value.trim(),
+    content: document.getElementById('lesson-content').value,
+    type: document.getElementById('lesson-type').value,
+    duration: document.getElementById('lesson-duration').value.trim(),
+    points: Number(document.getElementById('lesson-points').value) || 0
+  };
+  try {
+    const path = `/courses/${courseId}/lessons${currentLessonId ? `/${currentLessonId}` : ''}`;
+    await api(path, { method: currentLessonId ? 'PUT' : 'POST', body });
+    showToast(currentLessonId ? 'Lesson updated' : 'Lesson added');
+    currentLessonId = null;
+    await loadCourseContent();
+    await loadCourses();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteLesson() {
+  const courseId = document.getElementById('content-course-select').value;
+  if (!courseId || !currentLessonId || !confirm('Delete this lesson?')) return;
+  try {
+    await api(`/courses/${courseId}/lessons/${currentLessonId}`, { method: 'DELETE' });
+    currentLessonId = null;
+    showToast('Lesson deleted');
+    await loadCourseContent();
+    await loadCourses();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
 
 // Escape HTML helper
 function escapeHtml(str) {
@@ -1056,5 +1329,20 @@ function renderActivity(text) {
 }
 
 // ── Initialization ──────────────────────────────────
-initUser();
-navigate('dashboard');
+(async function initialize() {
+  if (!token) {
+    window.location.href = '/';
+    return;
+  }
+  try {
+    const session = await api('/auth/me');
+    currentUser = session.user;
+    localStorage.setItem('eduflow_user', JSON.stringify(currentUser));
+    allowedPages = rolePages[currentUser.role] || [];
+    initUser();
+    navigate('dashboard');
+  } catch (err) {
+    showToast(err.message || 'Unable to verify your session', 'error');
+    logout();
+  }
+})();

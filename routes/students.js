@@ -103,6 +103,11 @@ router.post('/', protect, requireRoles('admin', 'instructor'), async (req, res) 
     };
     db.get('users').push(user).write();
     db.get('students').push(student).write();
+    selectedCourses.forEach(course => {
+      db.get('courses').find({ id: course.id }).assign({
+        enrolledStudents: (course.enrolledStudents || 0) + 1
+      }).write();
+    });
     logActivity(`New student ${student.name} enrolled`);
     res.status(201).json(student);
   } catch (err) {
@@ -115,7 +120,18 @@ router.put('/:id', protect, requireRoles('admin'), (req, res) => {
   try {
     const student = db.get('students').find({ id: req.params.id }).value();
     if (!student) return res.status(404).json({ message: 'Student not found' });
-    const updates = { ...req.body, id: student.id, created_at: student.created_at };
+    const updates = {};
+    if (req.body.status !== undefined) {
+      if (!['active', 'inactive', 'completed'].includes(req.body.status)) {
+        return res.status(400).json({ message: 'Invalid student status' });
+      }
+      updates.status = req.body.status;
+    }
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: 'No valid student fields to update' });
+    }
+    updates.id = student.id;
+    updates.created_at = student.created_at;
     db.get('students').find({ id: req.params.id }).assign(updates).write();
     res.json(db.get('students').find({ id: req.params.id }).value());
   } catch (err) {
@@ -130,6 +146,20 @@ router.delete('/:id', protect, requireRoles('admin'), (req, res) => {
     if (!student) return res.status(404).json({ message: 'Student not found' });
     db.get('students').remove({ id: req.params.id }).write();
     if (student.userId) db.get('users').remove({ id: student.userId }).write();
+    db.get('assignments').value().forEach(assignment => {
+      const submissions = (assignment.submissions || []).filter(item => item.studentId !== student.id);
+      if (submissions.length !== (assignment.submissions || []).length) {
+        db.get('assignments').find({ id: assignment.id }).assign({ submissions }).write();
+      }
+    });
+    (student.courseIds || []).forEach(courseId => {
+      const course = db.get('courses').find({ id: courseId }).value();
+      if (course) {
+        db.get('courses').find({ id: courseId }).assign({
+          enrolledStudents: Math.max(0, (course.enrolledStudents || 0) - 1)
+        }).write();
+      }
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ message: err.message });

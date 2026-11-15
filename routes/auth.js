@@ -12,6 +12,10 @@ function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE });
 }
 
+router.get('/setup-status', (req, res) => {
+  res.json({ needsAdminSetup: db.get('users').value().length === 0 });
+});
+
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {

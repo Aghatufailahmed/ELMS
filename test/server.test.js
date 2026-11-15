@@ -42,7 +42,7 @@ after(async () => {
   fs.rmSync(testDirectory, { recursive: true, force: true });
 });
 
-test('role provisioning, permissions, course enrollment, and assignment visibility work', async () => {
+test('role provisioning, lesson progress, assignment submissions, grading, and permissions work', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
   assert.equal((await health.json()).ok, true);
@@ -53,6 +53,8 @@ test('role provisioning, permissions, course enrollment, and assignment visibili
 
   const unauthenticated = await fetch(`${baseUrl}/api/courses`);
   assert.equal(unauthenticated.status, 401);
+  const setupStatus = await fetch(`${baseUrl}/api/auth/setup-status`);
+  assert.deepEqual(await setupStatus.json(), { needsAdminSetup: false });
 
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',
@@ -211,22 +213,87 @@ test('role provisioning, permissions, course enrollment, and assignment visibili
   const studentRosterResponse = await fetch(`${baseUrl}/api/students`, { headers: studentHeaders });
   assert.equal(studentRosterResponse.status, 403);
 
+  const lessonResponse = await fetch(`${baseUrl}/api/courses/${course.id}/lessons`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({
+      title: 'Getting Started',
+      description: 'Introduction',
+      content: 'Welcome to the course.',
+      type: 'Reading'
+    })
+  });
+  assert.equal(lessonResponse.status, 201);
+  const lesson = await lessonResponse.json();
+  const studentCourse = await fetch(`${baseUrl}/api/courses/${course.id}`, { headers: studentHeaders });
+  const studentCourseData = await studentCourse.json();
+  assert.equal(studentCourseData.lessons[0].id, lesson.id);
+  assert.equal(Object.hasOwn(studentCourseData, 'completedLessonIds'), true);
+
+  const lessonComplete = await fetch(`${baseUrl}/api/courses/${course.id}/lessons/${lesson.id}/complete`, {
+    method: 'POST',
+    headers: studentHeaders
+  });
+  assert.deepEqual(await lessonComplete.json(), { success: true, progress: 100 });
+  const completedStudentCourse = await fetch(`${baseUrl}/api/courses/${course.id}`, { headers: studentHeaders });
+  assert.deepEqual((await completedStudentCourse.json()).completedLessonIds, [lesson.id]);
+
   const forbiddenAssignment = await fetch(`${baseUrl}/api/assignments`, {
     method: 'POST',
     headers: instructorHeaders,
-    body: JSON.stringify({ title: 'Out of Scope Assignment', course_name: 'Open Course' })
+    body: JSON.stringify({ title: 'Out of Scope Assignment', courseId: secondCourse.id })
   });
   assert.equal(forbiddenAssignment.status, 403);
 
   const createdAssignment = await fetch(`${baseUrl}/api/assignments`, {
     method: 'POST',
     headers: instructorHeaders,
-    body: JSON.stringify({ title: 'First Assignment', course_name: 'Instructor Course' })
+    body: JSON.stringify({ title: 'First Assignment', courseId: course.id, max_points: 50 })
   });
   assert.equal(createdAssignment.status, 201);
+  const assignment = await createdAssignment.json();
   const studentAssignmentsResponse = await fetch(`${baseUrl}/api/assignments`, { headers: studentHeaders });
   assert.equal(studentAssignmentsResponse.status, 200);
-  assert.equal((await studentAssignmentsResponse.json()).length, 1);
+  const studentAssignments = await studentAssignmentsResponse.json();
+  assert.equal(studentAssignments.length, 1);
+  assert.equal(Object.hasOwn(studentAssignments[0], 'submissions'), false);
+
+  const submissionResponse = await fetch(`${baseUrl}/api/assignments/${assignment.id}/submissions`, {
+    method: 'POST',
+    headers: { ...studentHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: 'First answer' })
+  });
+  assert.equal(submissionResponse.status, 201);
+  const resubmissionResponse = await fetch(`${baseUrl}/api/assignments/${assignment.id}/submissions`, {
+    method: 'POST',
+    headers: { ...studentHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answer: 'Updated answer' })
+  });
+  assert.equal(resubmissionResponse.status, 200);
+  const pendingAssignmentsResponse = await fetch(`${baseUrl}/api/assignments`, { headers: instructorHeaders });
+  const pendingAssignment = (await pendingAssignmentsResponse.json())[0];
+  assert.equal(pendingAssignment.pending, 1);
+  assert.equal(pendingAssignment.missing, 0);
+
+  const gradeResponse = await fetch(`${baseUrl}/api/assignments/${assignment.id}/submissions/${student.id}`, {
+    method: 'PUT',
+    headers: instructorHeaders,
+    body: JSON.stringify({ score: 45, feedback: 'Good work' })
+  });
+  assert.equal(gradeResponse.status, 200);
+  const gradedAssignmentsResponse = await fetch(`${baseUrl}/api/assignments`, { headers: studentHeaders });
+  const gradedAssignment = (await gradedAssignmentsResponse.json())[0];
+  assert.equal(gradedAssignment.mySubmission.score, 45);
+  assert.equal(gradedAssignment.mySubmission.feedback, 'Good work');
+
+  const renameInstructor = await fetch(`${baseUrl}/api/instructors/${instructorProfile.id}`, {
+    method: 'PUT',
+    headers: adminHeaders,
+    body: JSON.stringify({ name: 'Updated Instructor' })
+  });
+  assert.equal(renameInstructor.status, 200);
+  const renamedCoursesResponse = await fetch(`${baseUrl}/api/courses`, { headers: instructorHeaders });
+  assert.equal((await renamedCoursesResponse.json())[0].instructor, 'Updated Instructor');
 
   const studentCreateAccount = await fetch(`${baseUrl}/api/students`, {
     method: 'POST',

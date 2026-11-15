@@ -16,10 +16,10 @@ router.get('/', protect, requireRoles('admin'), (req, res) => {
     const totalCourses   = courses.length;
     const totalStudents  = students.length;
     const completionRate = students.length
-      ? Math.round(students.reduce((sum, s) => sum + (s.progress || 0), 0) / students.length)
+      ? Math.round(students.reduce((sum, student) => sum + (student.progress || 0), 0) / students.length)
       : 0;
-    const pendingReviews = assignments.filter(a => (a.pending || 0) > 0).length;
-    const revenue        = totalStudents * 40;
+    const pendingReviews = assignments.reduce((sum, assignment) =>
+      sum + Math.max(0, (assignment.submissions || []).filter(submission => submission.score === undefined).length), 0);
 
     // Category breakdown
     const catMap = {};
@@ -47,29 +47,55 @@ router.get('/', protect, requireRoles('admin'), (req, res) => {
 
     // Top courses by enrolled students
     const topCourses = courses
-      .slice()
-      .sort((a, b) => (b.enrolledStudents || 0) - (a.enrolledStudents || 0))
-      .slice(0, 4)
-      .map(c => ({
-        title:           c.title,
-        students:        c.enrolledStudents || 0,
-        completion:      c.completionRate   || 0,
-        avgScore:        c.avgScore         || 0,
-        revenue:         (c.enrolledStudents || 0) * 40,
-        rating:          c.rating           || 0
-      }));
+      .map(course => {
+        const enrolled = students.filter(student => (student.courseIds || []).includes(course.id));
+        const graded = assignments
+          .filter(assignment => assignment.courseId === course.id)
+          .flatMap(assignment => (assignment.submissions || []).map(submission => ({
+            ...submission,
+            maxPoints: assignment.max_points
+          })))
+          .filter(submission => submission.score !== undefined);
+        const maxScore = graded.length
+          ? Math.round(graded.reduce((sum, submission) => sum + (submission.score / submission.maxPoints * 100), 0) / graded.length)
+          : 0;
+        const completion = enrolled.length
+          ? Math.round(enrolled.reduce((sum, student) => sum + ((student.courseProgress || {})[course.id] || 0), 0) / enrolled.length)
+          : 0;
+        return {
+          title: course.title,
+          students: enrolled.length,
+          completion,
+          avgScore: graded.length ? maxScore : null,
+          revenue: null,
+          rating: null
+        };
+      })
+      .sort((a, b) => b.students - a.students)
+      .slice(0, 4);
+
+    const quizSubmissions = assignments
+      .filter(assignment => assignment.type === 'Quiz')
+      .flatMap(assignment => (assignment.submissions || []).map(submission => ({
+        ...submission,
+        maxPoints: assignment.max_points
+      })))
+      .filter(submission => submission.score !== undefined);
+    const dropoffRate = students.length
+      ? Math.round(students.filter(student => (student.progress || 0) < 10).length / students.length * 100)
+      : 0;
 
     res.json({
       totalCourses,
       totalStudents,
       completionRate,
       pendingReviews,
-      revenue,
-      avgTime:        '2h 14m',
-      quizPassRate:   assignments.length
-        ? Math.round(assignments.filter(a => a.avg_score > 50).length / assignments.length * 100)
-        : 84,
-      dropoffRate:    11,
+      revenue: null,
+      avgTime: null,
+      quizPassRate: quizSubmissions.length
+        ? Math.round(quizSubmissions.filter(submission => submission.score / submission.maxPoints >= 0.5).length / quizSubmissions.length * 100)
+        : 0,
+      dropoffRate,
       monthlyEnrollments: months,
       categoryBreakdown,
       topCourses,

@@ -55,26 +55,41 @@
       <button type="submit" class="btn-primary login-btn" id="loginBtn">Sign In</button>
     </form>
 
-    <div class="login-demo" id="demoBox" style="cursor: pointer;" title="Click to fill credentials">
-      Demo&nbsp; <code>admin@eduflow.io</code> &nbsp;/&nbsp; <code>Admin123!</code>
+    <div class="login-demo" id="setupNotice" hidden>
+      No administrator is configured. Create the first admin using the setup instructions in README.md.
     </div>
   </div>
 </div>
 
 <script>
-  // Redirect if already logged in
-  if (localStorage.getItem('eduflow_token')) {
-    window.location.href = '/dashboard';
-  }
+  async function checkApplicationState() {
+    try {
+      const setupResponse = await fetch('/api/auth/setup-status');
+      if (!setupResponse.ok) throw new Error('Unable to check application setup');
+      const setup = await setupResponse.json();
+      document.getElementById('setupNotice').hidden = !setup.needsAdminSetup;
+      if (setup.needsAdminSetup) document.getElementById('loginForm').hidden = true;
 
-  // Quick fill from demo credentials
-  const demoBox = document.getElementById('demoBox');
-  if (demoBox) {
-    demoBox.addEventListener('click', () => {
-      document.getElementById('email').value = 'admin@eduflow.io';
-      document.getElementById('password').value = 'Admin123!';
-    });
+      const token = localStorage.getItem('eduflow_token');
+      if (!token) return;
+      const response = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const { user } = await response.json();
+        localStorage.setItem('eduflow_user', JSON.stringify(user));
+        window.location.href = '/dashboard';
+        return;
+      }
+      localStorage.removeItem('eduflow_token');
+      localStorage.removeItem('eduflow_user');
+    } catch (error) {
+      const errEl = document.getElementById('loginError');
+      errEl.textContent = error.message;
+      errEl.classList.add('visible');
+    }
   }
+  checkApplicationState();
 
   // Show/hide password
   const pwInput  = document.getElementById('password');
