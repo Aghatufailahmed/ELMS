@@ -1,8 +1,9 @@
 // routes/instructors.js
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/db');
-const { protect } = require('../middleware/auth');
+const { protect, requireRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ function logActivity(text) {
 }
 
 // GET /api/instructors
-router.get('/', protect, (req, res) => {
+router.get('/', protect, requireRoles('admin'), (req, res) => {
   try {
     const instructors = db.get('instructors').value() || [];
     const courses = db.get('courses').value() || [];
@@ -41,32 +42,49 @@ router.get('/', protect, (req, res) => {
 });
 
 // POST /api/instructors
-router.post('/', protect, (req, res) => {
+router.post('/', protect, requireRoles('admin'), async (req, res) => {
   try {
-    const { name, email, department, bio, status } = req.body;
-    if (!name || !name.trim()) {
+    const { name, email, password, department, bio } = req.body;
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ message: 'Instructor name is required' });
     }
-    if (!email || !email.trim()) {
+    if (typeof email !== 'string' || !email.trim()) {
       return res.status(400).json({ message: 'Instructor email is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: 'A password of at least 8 characters is required' });
     }
 
     const trimmedEmail = email.trim().toLowerCase();
-    const existing = db.get('instructors').find(i => i.email && i.email.toLowerCase() === trimmedEmail).value();
-    if (existing) {
-      return res.status(400).json({ message: 'An instructor with this email already exists' });
+    const existingUser = db.get('users').find(u => u.email && u.email.toLowerCase() === trimmedEmail).value();
+    const existingInstructor = db.get('instructors')
+      .find(instructor => instructor.email && instructor.email.toLowerCase() === trimmedEmail)
+      .value();
+    if (existingUser || existingInstructor) {
+      return res.status(400).json({ message: 'An account with this email already exists' });
     }
 
+    const now = new Date().toISOString();
+    const user = {
+      id: uuidv4(),
+      name: name.trim(),
+      email: trimmedEmail,
+      password: await bcrypt.hash(password, 10),
+      role: 'instructor',
+      created_at: now
+    };
     const instructor = {
       id: uuidv4(),
+      userId: user.id,
       name: name.trim(),
       email: trimmedEmail,
       department: (department && department.trim()) || 'General Faculty',
       bio: (bio && bio.trim()) || '',
-      status: status === 'on-leave' ? 'on-leave' : 'active',
-      created_at: new Date().toISOString()
+      status: 'active',
+      created_at: now
     };
 
+    db.get('users').push(user).write();
     db.get('instructors').push(instructor).write();
     logActivity(`Instructor ${instructor.name} added to faculty`);
     res.status(201).json(instructor);
@@ -76,7 +94,7 @@ router.post('/', protect, (req, res) => {
 });
 
 // PUT /api/instructors/:id
-router.put('/:id', protect, (req, res) => {
+router.put('/:id', protect, requireRoles('admin'), (req, res) => {
   try {
     const { id } = req.params;
     const item = db.get('instructors').find({ id }).value();
@@ -103,7 +121,7 @@ router.put('/:id', protect, (req, res) => {
 });
 
 // DELETE /api/instructors/:id
-router.delete('/:id', protect, (req, res) => {
+router.delete('/:id', protect, requireRoles('admin'), (req, res) => {
   try {
     const { id } = req.params;
     const item = db.get('instructors').find({ id }).value();
@@ -112,6 +130,7 @@ router.delete('/:id', protect, (req, res) => {
     }
 
     db.get('instructors').remove({ id }).write();
+    if (item.userId) db.get('users').remove({ id: item.userId }).write();
     logActivity(`Instructor ${item.name} removed`);
     res.json({ success: true, message: 'Instructor removed successfully' });
   } catch (err) {

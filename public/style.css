@@ -1139,3 +1139,7 @@ body {
   background: rgba(239, 68, 68, 0.16);
   color: #b91c1c;
 }
+/* Keep role-hidden navigation and panels hidden even when component styles set display. */
+[hidden] {
+  display: none !important;
+}

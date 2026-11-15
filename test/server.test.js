@@ -42,7 +42,7 @@ after(async () => {
   fs.rmSync(testDirectory, { recursive: true, force: true });
 });
 
-test('authentication, protected registration, and authenticated API requests work', async () => {
+test('role provisioning, permissions, course enrollment, and assignment visibility work', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
   assert.equal((await health.json()).ok, true);
@@ -53,17 +53,6 @@ test('authentication, protected registration, and authenticated API requests wor
 
   const unauthenticated = await fetch(`${baseUrl}/api/courses`);
   assert.equal(unauthenticated.status, 401);
-
-  const publicRegistration = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: 'Unexpected Admin',
-      email: 'unexpected@example.com',
-      password: 'password-123'
-    })
-  });
-  assert.equal(publicRegistration.status, 401);
 
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',
@@ -76,60 +65,207 @@ test('authentication, protected registration, and authenticated API requests wor
   assert.equal(Object.hasOwn(loginData.user, 'password'), false);
   adminToken = loginData.token;
 
+  const adminHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${adminToken}`
+  };
   const me = await fetch(`${baseUrl}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${adminToken}` }
+    headers: adminHeaders
   });
   assert.equal(me.status, 200);
   assert.equal((await me.json()).user.id, 'test-admin');
 
-  const registration = await fetch(`${baseUrl}/api/auth/register`, {
+  const instructorResponse = await fetch(`${baseUrl}/api/instructors`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`
-    },
+    headers: adminHeaders,
     body: JSON.stringify({
-      name: ' New User ',
-      email: 'New@Example.com',
-      password: 'password-123',
-      role: 'owner'
+      name: 'Test Instructor',
+      email: 'instructor@example.com',
+      password: 'instructor-password',
+      department: 'Engineering'
     })
   });
-  assert.equal(registration.status, 201);
-  const registeredUser = await registration.json();
-  assert.equal(registeredUser.user.name, 'New User');
-  assert.equal(registeredUser.user.email, 'new@example.com');
-  assert.equal(registeredUser.user.role, 'admin');
-  assert.equal(Object.hasOwn(registeredUser.user, 'password'), false);
+  assert.equal(instructorResponse.status, 201);
+  const instructorProfile = await instructorResponse.json();
 
-  const duplicateRegistration = await fetch(`${baseUrl}/api/auth/register`, {
+  const instructorLogin = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`
-    },
-    body: JSON.stringify({
-      name: 'Duplicate User',
-      email: 'NEW@example.com',
-      password: 'password-123'
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'instructor@example.com', password: 'instructor-password' })
   });
-  assert.equal(duplicateRegistration.status, 400);
+  assert.equal(instructorLogin.status, 200);
+  const instructorData = await instructorLogin.json();
+  assert.equal(instructorData.user.role, 'instructor');
+  const instructorHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${instructorData.token}`
+  };
+
+  const forbiddenInstructorCreation = await fetch(`${baseUrl}/api/instructors`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({ name: 'Another Instructor', email: 'another@example.com', password: 'password-123' })
+  });
+  assert.equal(forbiddenInstructorCreation.status, 403);
+
+  const forbiddenCourseCreation = await fetch(`${baseUrl}/api/courses`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({ title: 'Unauthorized Course' })
+  });
+  assert.equal(forbiddenCourseCreation.status, 403);
 
   const createdCourse = await fetch(`${baseUrl}/api/courses`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`
-    },
-    body: JSON.stringify({ title: '<img src=x onerror=alert(1)>' })
+    headers: adminHeaders,
+    body: JSON.stringify({ title: 'Instructor Course', instructor: 'Test Instructor' })
   });
   assert.equal(createdCourse.status, 201);
-
-  const analytics = await fetch(`${baseUrl}/api/analytics`, {
-    headers: { Authorization: `Bearer ${adminToken}` }
+  const course = await createdCourse.json();
+  const publishedCourse = await fetch(`${baseUrl}/api/courses/${course.id}`, {
+    method: 'PUT',
+    headers: adminHeaders,
+    body: JSON.stringify({ status: 'active' })
   });
-  assert.equal(analytics.status, 200);
-  const activity = (await analytics.json()).recentActivity[0].text;
+  assert.equal(publishedCourse.status, 200);
+
+  const secondCourseResponse = await fetch(`${baseUrl}/api/courses`, {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ title: 'Open Course' })
+  });
+  assert.equal(secondCourseResponse.status, 201);
+  const secondCourse = await secondCourseResponse.json();
+  const publishSecondCourse = await fetch(`${baseUrl}/api/courses/${secondCourse.id}`, {
+    method: 'PUT',
+    headers: adminHeaders,
+    body: JSON.stringify({ status: 'active' })
+  });
+  assert.equal(publishSecondCourse.status, 200);
+
+  const instructorCoursesResponse = await fetch(`${baseUrl}/api/courses`, { headers: instructorHeaders });
+  assert.equal(instructorCoursesResponse.status, 200);
+  assert.deepEqual((await instructorCoursesResponse.json()).map(item => item.id), [course.id]);
+
+  const missingStudentCourse = await fetch(`${baseUrl}/api/students`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({
+      name: 'Unassigned Student',
+      email: 'unassigned@example.com',
+      password: 'student-password'
+    })
+  });
+  assert.equal(missingStudentCourse.status, 400);
+
+  const createStudent = await fetch(`${baseUrl}/api/students`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({
+      name: 'Test Student',
+      email: 'student@example.com',
+      password: 'student-password',
+      courseIds: [course.id]
+    })
+  });
+  assert.equal(createStudent.status, 201);
+  const student = await createStudent.json();
+  assert.equal(student.enrolled_courses, 1);
+  assert.equal(Object.hasOwn(student, 'password'), false);
+
+  const studentLogin = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'student@example.com', password: 'student-password' })
+  });
+  assert.equal(studentLogin.status, 200);
+  const studentData = await studentLogin.json();
+  assert.equal(studentData.user.role, 'student');
+  const studentHeaders = { Authorization: `Bearer ${studentData.token}` };
+
+  const studentProfile = await fetch(`${baseUrl}/api/students/me`, { headers: studentHeaders });
+  assert.equal(studentProfile.status, 200);
+  assert.equal((await studentProfile.json()).email, 'student@example.com');
+
+  const studentCoursesResponse = await fetch(`${baseUrl}/api/courses`, { headers: studentHeaders });
+  assert.equal(studentCoursesResponse.status, 200);
+  const studentCourses = await studentCoursesResponse.json();
+  assert.equal(studentCourses.length, 2);
+  assert.equal(studentCourses.find(item => item.id === course.id).isEnrolled, true);
+  assert.equal(studentCourses.find(item => item.id === secondCourse.id).isEnrolled, false);
+
+  const selfEnrollment = await fetch(`${baseUrl}/api/courses/${secondCourse.id}/enroll`, {
+    method: 'POST',
+    headers: studentHeaders
+  });
+  assert.equal(selfEnrollment.status, 200);
+  const duplicateSelfEnrollment = await fetch(`${baseUrl}/api/courses/${secondCourse.id}/enroll`, {
+    method: 'POST',
+    headers: studentHeaders
+  });
+  assert.equal(duplicateSelfEnrollment.status, 409);
+
+  const instructorStudentsResponse = await fetch(`${baseUrl}/api/students`, { headers: instructorHeaders });
+  assert.equal(instructorStudentsResponse.status, 200);
+  assert.equal((await instructorStudentsResponse.json()).length, 1);
+  const studentRosterResponse = await fetch(`${baseUrl}/api/students`, { headers: studentHeaders });
+  assert.equal(studentRosterResponse.status, 403);
+
+  const forbiddenAssignment = await fetch(`${baseUrl}/api/assignments`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({ title: 'Out of Scope Assignment', course_name: 'Open Course' })
+  });
+  assert.equal(forbiddenAssignment.status, 403);
+
+  const createdAssignment = await fetch(`${baseUrl}/api/assignments`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({ title: 'First Assignment', course_name: 'Instructor Course' })
+  });
+  assert.equal(createdAssignment.status, 201);
+  const studentAssignmentsResponse = await fetch(`${baseUrl}/api/assignments`, { headers: studentHeaders });
+  assert.equal(studentAssignmentsResponse.status, 200);
+  assert.equal((await studentAssignmentsResponse.json()).length, 1);
+
+  const studentCreateAccount = await fetch(`${baseUrl}/api/students`, {
+    method: 'POST',
+    headers: { ...studentHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Another Student',
+      email: 'another-student@example.com',
+      password: 'student-password'
+    })
+  });
+  assert.equal(studentCreateAccount.status, 403);
+
+  const studentAnalytics = await fetch(`${baseUrl}/api/analytics`, { headers: studentHeaders });
+  assert.equal(studentAnalytics.status, 403);
+  const adminAnalytics = await fetch(`${baseUrl}/api/analytics`, { headers: adminHeaders });
+  assert.equal(adminAnalytics.status, 200);
+
+  const disableInstructor = await fetch(`${baseUrl}/api/instructors/${instructorProfile.id}`, {
+    method: 'PUT',
+    headers: adminHeaders,
+    body: JSON.stringify({ status: 'on-leave' })
+  });
+  assert.equal(disableInstructor.status, 200);
+  const disabledInstructorLogin = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'instructor@example.com', password: 'instructor-password' })
+  });
+  assert.equal(disabledInstructorLogin.status, 403);
+  const disabledInstructorApi = await fetch(`${baseUrl}/api/courses`, { headers: instructorHeaders });
+  assert.equal(disabledInstructorApi.status, 403);
+
+  const unsafeTitleCourse = await fetch(`${baseUrl}/api/courses`, {
+    method: 'POST',
+    headers: adminHeaders,
+    body: JSON.stringify({ title: '<img src=x onerror=alert(1)>' })
+  });
+  assert.equal(unsafeTitleCourse.status, 201);
+  const activityResponse = await fetch(`${baseUrl}/api/analytics`, { headers: adminHeaders });
+  const activity = (await activityResponse.json()).recentActivity[0].text;
   assert.equal(activity, 'New course <img src=x onerror=alert(1)> created');
 });

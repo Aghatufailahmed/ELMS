@@ -13,10 +13,17 @@ try {
   currentUser = {};
 }
 
+const rolePages = {
+  admin: ['dashboard', 'courses', 'instructors', 'content', 'students', 'assignments', 'analytics', 'settings'],
+  instructor: ['dashboard', 'courses', 'students', 'assignments', 'settings'],
+  student: ['dashboard', 'courses', 'assignments', 'settings']
+};
+const allowedPages = rolePages[currentUser.role] || rolePages.student;
+
 // ── Init user display ───────────────────────────────
 function initUser() {
-  const name = currentUser.name || 'Admin User';
-  const role = (currentUser.role || 'administrator').toUpperCase();
+  const name = currentUser.name || 'User';
+  const role = (currentUser.role || 'student').toUpperCase();
   const initials = name
     .split(' ')
     .map(p => p[0])
@@ -43,6 +50,23 @@ function initUser() {
   if (setRole) setRole.textContent = role;
   if (setNameInput) setNameInput.value = name;
   if (setEmailInput) setEmailInput.value = currentUser.email || 'admin@eduflow.io';
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.hidden = !allowedPages.includes(item.dataset.page);
+  });
+  document.querySelectorAll('.page').forEach(page => {
+    page.hidden = !allowedPages.includes(page.id.replace('page-', ''));
+  });
+  const platformSettings = document.querySelector('.settings-grid > .panel:first-child');
+  if (platformSettings) platformSettings.hidden = currentUser.role !== 'admin';
+  const addInstructorButton = document.querySelector('#page-instructors .page-toolbar > button');
+  if (addInstructorButton) addInstructorButton.hidden = currentUser.role !== 'admin';
+  const addStudentButton = document.querySelector('#page-students .page-toolbar > button');
+  if (addStudentButton) addStudentButton.hidden = !['admin', 'instructor'].includes(currentUser.role);
+  const addAssignmentButton = document.querySelector('#page-assignments .page-toolbar > button');
+  if (addAssignmentButton) addAssignmentButton.hidden = currentUser.role === 'student';
+  const courseStatusFilter = document.getElementById('course-filter-status');
+  if (courseStatusFilter) courseStatusFilter.hidden = currentUser.role !== 'admin';
 }
 
 // ── API Helper ──────────────────────────────────────
@@ -106,6 +130,7 @@ function closeSidebar() {
 
 // ── Navigation ──────────────────────────────────────
 function navigate(pageId) {
+  if (!allowedPages.includes(pageId)) return;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
 
@@ -149,6 +174,9 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 // ── Loaders: Dashboard ──────────────────────────────
 async function loadDashboard() {
+  if (currentUser.role === 'student') return loadStudentDashboard();
+  if (currentUser.role === 'instructor') return loadInstructorDashboard();
+
   try {
     const [analytics, courses] = await Promise.all([
       api('/analytics'),
@@ -233,6 +261,76 @@ async function loadDashboard() {
   }
 }
 
+async function loadStudentDashboard() {
+  try {
+    const [student, courses, assignments] = await Promise.all([
+      api('/students/me'),
+      api('/courses'),
+      api('/assignments')
+    ]);
+    const enrolledCourses = courses.filter(course => course.isEnrolled);
+    const progress = student.progress || 0;
+    setDashboardStat(1, 'Available Courses', courses.length, 'Explore active courses');
+    setDashboardStat(2, 'My Courses', enrolledCourses.length, 'Courses you joined');
+    setDashboardStat(3, 'My Progress', `${progress}%`, 'Your learning progress');
+    setDashboardStat(4, 'My Assignments', assignments.length, 'For your enrolled courses');
+    renderDashboardCourses(enrolledCourses);
+    renderDashboardMessage(`Welcome, ${student.name}. Browse courses to continue learning.`);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadInstructorDashboard() {
+  try {
+    const [courses, students, assignments] = await Promise.all([
+      api('/courses'),
+      api('/students'),
+      api('/assignments')
+    ]);
+    const averageProgress = courses.length
+      ? Math.round(courses.reduce((total, course) => total + (course.completionRate || 0), 0) / courses.length)
+      : 0;
+    const pending = assignments.reduce((total, assignment) => total + (assignment.pending || 0), 0);
+    setDashboardStat(1, 'My Courses', courses.length, 'Courses assigned to you');
+    setDashboardStat(2, 'My Students', students.length, 'Enrolled in your courses');
+    setDashboardStat(3, 'Average Progress', `${averageProgress}%`, 'Across your courses');
+    setDashboardStat(4, 'Pending Submissions', pending, 'Awaiting review');
+    renderDashboardCourses(courses);
+    renderDashboardMessage(`Welcome, ${currentUser.name}. Manage your courses and students here.`);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function setDashboardStat(index, label, value, sub) {
+  const card = document.querySelector(`#page-dashboard .stat-card:nth-child(${index})`);
+  if (!card) return;
+  card.querySelector('.stat-label').textContent = label;
+  card.querySelector('.stat-value').textContent = value;
+  card.querySelector('.stat-sub').textContent = sub;
+}
+
+function renderDashboardCourses(courses) {
+  const tbody = document.getElementById('recent-courses-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = courses.length ? courses.slice(0, 5).map(course => `
+    <tr>
+      <td><strong>${escapeHtml(course.title)}</strong></td>
+      <td>${escapeHtml(course.instructor || 'Unassigned')}</td>
+      <td>${course.lessons || 0} Lessons</td>
+      <td>${course.isEnrolled ? 'Enrolled' : escapeHtml(course.status || 'active')}</td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="4">No courses yet.</td></tr>';
+}
+
+function renderDashboardMessage(message) {
+  const activity = document.getElementById('activity-list');
+  const progress = document.getElementById('progress-list');
+  if (activity) activity.innerHTML = `<li class="activity-item"><div class="activity-text">${escapeHtml(message)}</div></li>`;
+  if (progress) progress.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">Your course progress will appear here.</p>';
+}
+
 // ── Loaders: Courses ────────────────────────────────
 let allCourses = [];
 async function loadCourses() {
@@ -282,12 +380,43 @@ function renderCourses(courses) {
           <span>${escapeHtml(c.duration || 'Self-paced')}</span>
         </div>
         <div class="course-actions">
-          <button class="btn-outline btn-sm" onclick="navigate('content')">Edit Content</button>
-          <button class="btn-danger btn-sm" onclick="deleteCourse('${c.id}')">Delete</button>
+          ${currentUser.role === 'student'
+            ? (c.isEnrolled
+              ? '<span class="badge badge-active">Enrolled</span>'
+              : `<button class="btn-primary btn-sm" onclick="enrollCourse('${c.id}')">Enroll</button>`)
+            : currentUser.role === 'admin'
+              ? `<button class="btn-outline btn-sm" onclick="toggleCourseStatus('${c.id}')">${c.status === 'active' ? 'Unpublish' : 'Publish'}</button>
+                 <button class="btn-outline btn-sm" onclick="navigate('content')">Edit Content</button>
+                 <button class="btn-danger btn-sm" onclick="deleteCourse('${c.id}')">Delete</button>`
+              : ''}
         </div>
       </div>
     `;
   }).join('');
+}
+
+async function enrollCourse(id) {
+  try {
+    await api(`/courses/${id}/enroll`, { method: 'POST' });
+    showToast('You are enrolled in this course');
+    await loadCourses();
+    if (document.getElementById('page-dashboard').classList.contains('active')) loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function toggleCourseStatus(id) {
+  const course = allCourses.find(item => item.id === id);
+  if (!course) return;
+  const status = course.status === 'active' ? 'draft' : 'active';
+  try {
+    await api(`/courses/${id}`, { method: 'PUT', body: { status } });
+    showToast(status === 'active' ? 'Course published' : 'Course unpublished');
+    await loadCourses();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function deleteCourse(id) {
@@ -427,7 +556,7 @@ function renderStudents(students) {
         </td>
         <td>${s.joined_at || 'Recently'}</td>
         <td><span class="badge ${statusClass}">${statusLabel}</span></td>
-        <td><button class="btn-danger btn-sm" onclick="deleteStudent('${s.id}')">Delete</button></td>
+        <td>${currentUser.role === 'admin' ? `<button class="btn-danger btn-sm" onclick="deleteStudent('${s.id}')">Delete</button>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -503,10 +632,7 @@ function renderAssignments(assignments) {
           <span class="due-label">Due Date</span>
           <span class="due-date">${a.due_date || 'Flexible'}</span>
         </div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn-outline btn-sm" onclick="showToast('Review view opened')">Review</button>
-          <button class="btn-danger btn-sm" onclick="deleteAssignment('${a.id}')">Delete</button>
-        </div>
+        ${currentUser.role === 'admin' ? `<button class="btn-danger btn-sm" onclick="deleteAssignment('${a.id}')">Delete</button>` : ''}
       </div>
     `;
   }).join('');
@@ -663,19 +789,16 @@ const modalTemplates = {
           <input class="glass-input full-w" id="ni-email" type="email" placeholder="e.g. s.jenkins@eduflow.io" required />
         </div>
         <div class="modal-field">
+          <label>Initial Password * (at least 8 characters)</label>
+          <input class="glass-input full-w" id="ni-password" type="password" minlength="8" autocomplete="new-password" required />
+        </div>
+        <div class="modal-field">
           <label>Department / Specialization</label>
           <input class="glass-input full-w" id="ni-department" type="text" placeholder="e.g. Computer Science, AI, Design" />
         </div>
         <div class="modal-field">
           <label>Bio / Profile Summary</label>
           <textarea class="glass-textarea" id="ni-bio" rows="3" placeholder="Brief background, certifications, or teaching focus…"></textarea>
-        </div>
-        <div class="modal-field">
-          <label>Status</label>
-          <select class="glass-select full-w" id="ni-status">
-            <option value="active">Active</option>
-            <option value="on-leave">On Leave</option>
-          </select>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
@@ -697,16 +820,13 @@ const modalTemplates = {
           <input class="glass-input full-w" id="ns-email" type="email" placeholder="student@example.com" required />
         </div>
         <div class="modal-field">
-          <label>Initial Enrolled Courses</label>
-          <input class="glass-input full-w" id="ns-courses" type="number" value="1" min="1" />
+          <label>Initial Password * (at least 8 characters)</label>
+          <input class="glass-input full-w" id="ns-password" type="password" minlength="8" autocomplete="new-password" required />
         </div>
         <div class="modal-field">
-          <label>Status</label>
-          <select class="glass-select full-w" id="ns-status">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="completed">Completed</option>
-          </select>
+          <label>Enroll in Courses (optional)</label>
+          <select class="glass-select full-w" id="ns-courseIds" multiple size="4"></select>
+          <small>Select multiple courses with Ctrl (Windows) or Command (Mac).</small>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
@@ -759,14 +879,29 @@ async function openModal(type) {
   document.getElementById('modalBody').innerHTML = tmpl.html;
   document.getElementById('modalOverlay').classList.add('open');
 
-  if (type === 'addCourse') {
+  if (type === 'addCourse' || type === 'addStudent') {
     try {
-      if (!allInstructors || allInstructors.length === 0) {
+      if (type === 'addCourse' && (!allInstructors || allInstructors.length === 0)) {
         allInstructors = await api('/instructors');
       }
-      const dl = document.getElementById('instructor-datalist');
-      if (dl && allInstructors && allInstructors.length > 0) {
-        dl.innerHTML = allInstructors.map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.department || '')}</option>`).join('');
+      if (type === 'addCourse') {
+        const dl = document.getElementById('instructor-datalist');
+        if (dl && allInstructors && allInstructors.length > 0) {
+          dl.innerHTML = allInstructors.map(i => `<option value="${escapeHtml(i.name)}">${escapeHtml(i.department || '')}</option>`).join('');
+        }
+      } else {
+        const courses = await api('/courses');
+        const courseSelect = document.getElementById('ns-courseIds');
+        if (courseSelect) {
+          courseSelect.required = currentUser.role === 'instructor';
+          courseSelect.previousElementSibling.textContent = currentUser.role === 'instructor'
+            ? 'Enroll in one of Your Active Courses *'
+            : 'Enroll in Courses (optional)';
+          courseSelect.innerHTML = courses
+            .filter(course => course.status === 'active')
+            .map(course => `<option value="${escapeHtml(course.id)}">${escapeHtml(course.title)}</option>`)
+            .join('');
+        }
       }
     } catch (e) {
       showToast(e.message, 'error');
@@ -811,9 +946,9 @@ async function handleCreateInstructor(e) {
   const body = {
     name: document.getElementById('ni-name').value.trim(),
     email: document.getElementById('ni-email').value.trim(),
+    password: document.getElementById('ni-password').value,
     department: document.getElementById('ni-department').value.trim(),
-    bio: document.getElementById('ni-bio').value.trim(),
-    status: document.getElementById('ni-status').value
+    bio: document.getElementById('ni-bio').value.trim()
   };
 
   try {
@@ -831,8 +966,8 @@ async function handleCreateStudent(e) {
   const body = {
     name: document.getElementById('ns-name').value.trim(),
     email: document.getElementById('ns-email').value.trim(),
-    enrolled_courses: parseInt(document.getElementById('ns-courses').value) || 1,
-    status: document.getElementById('ns-status').value
+    password: document.getElementById('ns-password').value,
+    courseIds: Array.from(document.getElementById('ns-courseIds').selectedOptions, option => option.value)
   };
 
   try {

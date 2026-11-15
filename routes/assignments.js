@@ -2,14 +2,29 @@
 const express  = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db       = require('../config/db');
-const { protect } = require('../middleware/auth');
+const { protect, requireRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/assignments
-router.get('/', protect, (req, res) => {
+router.get('/', protect, requireRoles('admin', 'instructor', 'student'), (req, res) => {
   try {
-    const assignments = db.get('assignments').orderBy('due_date', 'asc').value();
+    let assignments = db.get('assignments').orderBy('due_date', 'asc').value();
+    if (req.user.role === 'student') {
+      const student = db.get('students').find({ userId: req.user.id }).value();
+      const enrolledCourses = db.get('courses')
+        .filter(course => (student.courseIds || []).includes(course.id))
+        .map('title')
+        .value();
+      assignments = assignments.filter(assignment => enrolledCourses.includes(assignment.course_name));
+    } else if (req.user.role === 'instructor') {
+      const instructor = db.get('instructors').find({ userId: req.user.id }).value();
+      const courseNames = db.get('courses')
+        .filter(course => (course.instructor || '').toLowerCase() === instructor.name.toLowerCase())
+        .map('title')
+        .value();
+      assignments = assignments.filter(assignment => courseNames.includes(assignment.course_name));
+    }
     res.json(assignments);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -17,10 +32,20 @@ router.get('/', protect, (req, res) => {
 });
 
 // POST /api/assignments
-router.post('/', protect, (req, res) => {
+router.post('/', protect, requireRoles('admin', 'instructor'), (req, res) => {
   try {
     const { title, type, course_name, due_date, max_points } = req.body;
     if (!title) return res.status(400).json({ message: 'Title is required' });
+    if (req.user.role === 'instructor') {
+      const instructor = db.get('instructors').find({ userId: req.user.id }).value();
+      const ownsCourse = db.get('courses').find(course =>
+        course.title === course_name &&
+        (course.instructor || '').toLowerCase() === instructor.name.toLowerCase()
+      ).value();
+      if (!ownsCourse) {
+        return res.status(403).json({ message: 'Assignments can only be created for your own courses' });
+      }
+    }
     const assignment = {
       id:          uuidv4(),
       title,
@@ -41,7 +66,7 @@ router.post('/', protect, (req, res) => {
 });
 
 // PUT /api/assignments/:id
-router.put('/:id', protect, (req, res) => {
+router.put('/:id', protect, requireRoles('admin'), (req, res) => {
   try {
     const a = db.get('assignments').find({ id: req.params.id }).value();
     if (!a) return res.status(404).json({ message: 'Assignment not found' });
@@ -54,7 +79,7 @@ router.put('/:id', protect, (req, res) => {
 });
 
 // DELETE /api/assignments/:id
-router.delete('/:id', protect, (req, res) => {
+router.delete('/:id', protect, requireRoles('admin'), (req, res) => {
   try {
     const a = db.get('assignments').find({ id: req.params.id }).value();
     if (!a) return res.status(404).json({ message: 'Assignment not found' });

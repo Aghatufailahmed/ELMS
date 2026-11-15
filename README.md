@@ -6,6 +6,9 @@ EduFlow is a lightweight learning management system demo with a responsive admin
 
 - JWT-based sign-in
 - Course, instructor, student, and assignment management
+- Separate admin, instructor, and student workspaces with role-based access
+- Admin-provisioned instructor accounts and admin/instructor-provisioned student accounts
+- Student course discovery and enrollment; instructor course and assignment views
 - Dashboard and enrollment analytics
 - Responsive dashboard UI
 
@@ -43,6 +46,8 @@ EduFlow is a lightweight learning management system demo with a responsive admin
 Open <http://localhost:5000>. Demo sign-in: `admin@eduflow.io` / `Admin123!`.
 
 `npm run seed` replaces the contents of the local database. Do not run it against production data. The demo credentials are public by design and must never be used for a deployed instance.
+
+Admins add instructors from **Instructors** and choose the instructor's initial password. Admins and instructors can add student accounts from **Students**. Instructors must enroll each student in at least one of their active courses; admins may do so optionally. Share those initial passwords securely; users can then sign in at the same login page and are shown the workspace allowed by their account role. Students can also enroll themselves in active courses.
 
 ## Configuration
 

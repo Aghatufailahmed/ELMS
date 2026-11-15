@@ -1,12 +1,12 @@
 // routes/analytics.js
 const express = require('express');
 const db      = require('../config/db');
-const { protect } = require('../middleware/auth');
+const { protect, requireRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/analytics
-router.get('/', protect, (req, res) => {
+router.get('/', protect, requireRoles('admin'), (req, res) => {
   try {
     const courses     = db.get('courses').value();
     const students    = db.get('students').value();
