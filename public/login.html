@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EduFlow — Sign In</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="bg-blob blob-1"></div>
+<div class="bg-blob blob-2"></div>
+<div class="bg-blob blob-3"></div>
+
+<div class="login-wrap">
+  <div class="login-card glass">
+
+    <div class="login-brand">
+      <span class="brand-mark">E</span>
+      <span class="brand-name">EduFlow</span>
+    </div>
+
+    <h2 class="login-title">Welcome back</h2>
+    <p class="login-sub">Sign in to your account to continue</p>
+
+    <div class="login-error" id="loginError"></div>
+
+    <form id="loginForm" autocomplete="off">
+      <div class="login-field">
+        <label for="email">Email address</label>
+        <input
+          class="glass-input full-w"
+          type="email"
+          id="email"
+          name="email"
+          placeholder="you@example.com"
+          autocomplete="email"
+          required
+        />
+      </div>
+
+      <div class="login-field">
+        <label for="password">Password</label>
+        <input
+          class="glass-input full-w"
+          type="password"
+          id="password"
+          name="password"
+          placeholder="Your password"
+          autocomplete="current-password"
+          required
+        />
+        <button type="button" class="pw-toggle" id="pwToggle">Show</button>
+      </div>
+
+      <button type="submit" class="btn-primary login-btn" id="loginBtn">Sign In</button>
+    </form>
+
+    <div class="login-demo" id="demoBox" style="cursor: pointer;" title="Click to fill credentials">
+      Demo&nbsp; <code>admin@eduflow.io</code> &nbsp;/&nbsp; <code>Admin123!</code>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Redirect if already logged in
+  if (localStorage.getItem('eduflow_token')) {
+    window.location.href = '/dashboard';
+  }
+
+  // Quick fill from demo credentials
+  const demoBox = document.getElementById('demoBox');
+  if (demoBox) {
+    demoBox.addEventListener('click', () => {
+      document.getElementById('email').value = 'admin@eduflow.io';
+      document.getElementById('password').value = 'Admin123!';
+    });
+  }
+
+  // Show/hide password
+  const pwInput  = document.getElementById('password');
+  const pwToggle = document.getElementById('pwToggle');
+  pwToggle.addEventListener('click', () => {
+    const isHidden = pwInput.type === 'password';
+    pwInput.type   = isHidden ? 'text' : 'password';
+    pwToggle.textContent = isHidden ? 'Hide' : 'Show';
+  });
+
+  // Login form
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl  = document.getElementById('loginError');
+    const btn    = document.getElementById('loginBtn');
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    errEl.classList.remove('visible');
+    btn.textContent = 'Signing in…';
+    btn.disabled    = true;
+
+    try {
+      const res  = await fetch('/api/auth/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Login failed');
+
+      localStorage.setItem('eduflow_token', data.token);
+      localStorage.setItem('eduflow_user',  JSON.stringify(data.user));
+      window.location.href = '/dashboard';
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('visible');
+      btn.textContent = 'Sign In';
+      btn.disabled    = false;
+    }
+  });
+</script>
+</body>
+</html>
