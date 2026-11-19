@@ -10,6 +10,11 @@ EduFlow is a role-based learning management system built with Express, a static 
 - Instructors manage lessons, add students to their active courses, create assignments, and grade submissions
 - Students browse and enroll in active courses, read lessons, track completion, submit assignments, and view feedback
 - Analytics based on saved accounts, enrollments, lesson progress, and graded submissions
+- Lecture materials: PDFs, Office documents, images, audio, video, text, and ZIP uploads with authorization
+- Assignment instructions, passing marks, secure student file submissions, resubmission, and automatic grades
+- Student/instructor profile updates, profile photos, and current-password-required password changes
+- Internal notifications and course/admin announcements
+- Configurable default grading scale stored in the LowDB schema
 
 ## Requirements
 

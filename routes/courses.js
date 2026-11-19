@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/db');
 const { protect, requireRoles } = require('../middleware/auth');
+const { createNotification } = require('./notifications');
 
 const router = express.Router();
 const lessonFields = ['title', 'description', 'content', 'type', 'duration', 'points'];
@@ -201,6 +202,9 @@ router.post('/:id/lessons', protect, requireRoles('admin', 'instructor'), (req, 
   };
   const contentItems = [...getLessons(course), lesson];
   db.get('courses').find({ id: course.id }).assign({ content: contentItems, lessons: contentItems.length }).write();
+  db.get('students').value()
+    .filter(student => (student.courseIds || []).includes(course.id))
+    .forEach(student => createNotification(student.userId, 'New lecture', `${lesson.title} was uploaded to ${course.title}`, 'lecture'));
   res.status(201).json(lesson);
 });
 

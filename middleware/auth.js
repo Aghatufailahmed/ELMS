@@ -8,6 +8,7 @@ exports.protect = (req, res, next) => {
   if (auth && auth.startsWith('Bearer ')) {
     token = auth.split(' ')[1];
   }
+  if (!token && typeof req.query.token === 'string') token = req.query.token;
   if (!token) {
     return res.status(401).json({ message: 'Not authorized — no token' });
   }

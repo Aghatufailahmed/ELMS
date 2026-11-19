@@ -41,6 +41,10 @@ app.use('/api/instructors', require('./routes/instructors'));
 app.use('/api/students',    require('./routes/students'));
 app.use('/api/assignments', require('./routes/assignments'));
 app.use('/api/analytics',   require('./routes/analytics'));
+app.use('/api/profile',     require('./routes/profile'));
+app.use('/api/materials',    require('./routes/materials'));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/announcements', require('./routes/announcements'));
 
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'eduflow-lms', timestamp: new Date().toISOString() });

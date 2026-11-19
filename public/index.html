@@ -53,9 +53,9 @@
       <div class="search-wrap">
         <input type="text" class="search-input" placeholder="Search anything…" />
       </div>
-      <div class="notif-badge">
+      <div class="notif-badge" id="notification-badge" onclick="toggleNotifications()" title="Notifications">
         <span class="notif-dot"></span>
-        <span class="notif-symbol">&#9790;</span>
+        <span class="notif-symbol" id="notification-count">0</span>
       </div>
       <div class="topbar-avatar" id="topbar-user-avatar">—</div>
       <button class="text-btn" onclick="logout()" style="margin-left:4px;font-size:12px;">Sign out</button>
@@ -206,6 +206,10 @@
           <label class="field-label" for="lesson-content">Lesson Content</label>
           <textarea class="glass-textarea" id="lesson-content" rows="12" maxlength="50000" placeholder="Write the lesson content students will see."></textarea>
         </div>
+        <div class="editor-field">
+          <label class="field-label" for="lesson-files">Lecture materials (PDF, Office, video, audio, images, ZIP)</label>
+          <input type="file" class="glass-input full-w" id="lesson-files" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.mp4,.webm,.mp3,.wav,.jpg,.jpeg,.png,.zip,.txt" />
+        </div>
       </form>
     </div>
   </section>
@@ -286,13 +290,35 @@
   <section class="page" id="page-settings">
     <div class="settings-grid">
       <div class="glass panel">
-        <div class="panel-head"><h2 class="panel-title">Account</h2></div>
+        <div class="panel-head"><h2 class="panel-title">Profile & Account</h2></div>
         <div class="profile-preview">
-          <div class="profile-avatar" id="settings-avatar">—</div>
+          <img class="profile-avatar" id="settings-avatar" alt="Profile photo" style="object-fit:cover;" />
           <div><p class="user-name" id="settings-name">—</p><p class="user-role" id="settings-role">—</p></div>
         </div>
-        <p id="settings-email-display"></p>
-        <p>For account or password changes, contact the platform administrator.</p>
+        <form id="profile-form" onsubmit="saveProfile(event)">
+          <label class="field-label">Full name<input class="glass-input full-w" id="profile-name" maxlength="100" /></label>
+          <label class="field-label">Email<input class="glass-input full-w" type="email" id="profile-email" /></label>
+          <label class="field-label">Phone<input class="glass-input full-w" id="profile-phone" maxlength="30" /></label>
+          <label class="field-label">Profile photo<input class="glass-input full-w" type="file" id="profile-photo" accept=".jpg,.jpeg,.png,.webp" /></label>
+          <button class="btn-primary" type="submit">Save profile</button>
+        </form>
+      </div>
+      <div class="glass panel">
+        <div class="panel-head"><h2 class="panel-title">Change password</h2></div>
+        <form onsubmit="changePassword(event)">
+          <label class="field-label">Current password<input class="glass-input full-w" type="password" id="password-current" required /></label>
+          <label class="field-label">New password<input class="glass-input full-w" type="password" id="password-new" minlength="12" required /></label>
+          <label class="field-label">Confirm password<input class="glass-input full-w" type="password" id="password-confirm" minlength="12" required /></label>
+          <small>Use at least 12 characters with uppercase, lowercase, and a number.</small>
+          <button class="btn-primary" type="submit" style="margin-top:12px;">Update password</button>
+        </form>
+      </div>
+      <div class="glass panel" style="grid-column:1/-1;">
+        <div class="panel-head">
+          <h2 class="panel-title">Notifications</h2>
+          <button class="text-btn" onclick="markAllNotificationsRead()">Mark all read</button>
+        </div>
+        <div id="notification-list" class="activity-list"></div>
       </div>
     </div>
   </section>

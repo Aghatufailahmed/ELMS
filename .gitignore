@@ -7,3 +7,6 @@ coverage/
 .git/
 *.log
 data/db.json
+data/uploads/
+data/assignment-submissions/
+data/profile-photos/

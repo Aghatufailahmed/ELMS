@@ -41,6 +41,8 @@ function initUser() {
   if (setName) setName.textContent = name;
   if (setRole) setRole.textContent = role;
   if (setEmail) setEmail.textContent = currentUser.email || '';
+  const profileAvatar = document.getElementById('settings-avatar');
+  if (profileAvatar) profileAvatar.textContent = initials;
 
   document.querySelectorAll('.nav-item').forEach(item => {
     item.hidden = !allowedPages.includes(item.dataset.page);
@@ -170,6 +172,7 @@ function navigate(pageId) {
   if (pageId === 'assignments') loadAssignments();
   if (pageId === 'analytics')   loadAnalytics();
   if (pageId === 'content')     loadContentEditor();
+  if (pageId === 'settings')    loadSettings();
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -414,6 +417,11 @@ async function openStudentCourse(id) {
   try {
     const course = await api(`/courses/${id}`);
     const completed = new Set(course.completedLessonIds || []);
+    const materialsByLesson = {};
+    await Promise.all(course.lessons.map(async lesson => {
+      try { materialsByLesson[lesson.id] = await api(`/materials/${course.id}/lessons/${lesson.id}`); }
+      catch (_) { materialsByLesson[lesson.id] = []; }
+    }));
     document.getElementById('modalTitle').textContent = course.title;
     document.getElementById('modalBody').innerHTML = course.lessons.length
       ? course.lessons.map(lesson => `
@@ -421,6 +429,11 @@ async function openStudentCourse(id) {
           <h3>${escapeHtml(lesson.title)}</h3>
           <p>${escapeHtml(lesson.description || '')}</p>
           <pre style="white-space:pre-wrap;margin:12px 0;">${escapeHtml(lesson.content || 'No lesson content yet.')}</pre>
+          ${(materialsByLesson[lesson.id] || []).length ? `
+            <div style="margin:10px 0;"><strong>Materials</strong><br>
+            ${(materialsByLesson[lesson.id] || []).map(material =>
+              `<a class="btn-outline btn-sm" style="display:inline-block;margin:4px 4px 0 0;" href="/api/materials/download/${material.id}?token=${encodeURIComponent(localStorage.getItem('eduflow_token'))}" target="_blank">${escapeHtml(material.originalName)} (${Math.ceil(material.size / 1024)} KB)</a>`
+            ).join('')}</div>` : ''}
           <button class="${completed.has(lesson.id) ? 'btn-outline' : 'btn-primary'} btn-sm"
             onclick="completeLesson('${course.id}','${lesson.id}')">${completed.has(lesson.id) ? 'Completed' : 'Mark Complete'}</button>
         </article>`).join('')
@@ -739,6 +752,10 @@ function openSubmissionForm(id) {
         <label for="submission-answer">Your answer *</label>
         <textarea class="glass-textarea" id="submission-answer" rows="10" maxlength="20000" required>${escapeHtml(assignment.mySubmission?.answer || '')}</textarea>
       </div>
+      <div class="modal-field">
+        <label for="submission-files">Answer files</label>
+        <input type="file" class="glass-input full-w" id="submission-files" multiple accept=".pdf,.doc,.docx,.pptx,.zip,.jpg,.jpeg,.png,.txt" />
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn-primary">Submit Assignment</button>
@@ -750,10 +767,24 @@ function openSubmissionForm(id) {
 async function submitAssignment(event, id) {
   event.preventDefault();
   try {
-    await api(`/assignments/${id}/submissions`, {
-      method: 'POST',
-      body: { answer: document.getElementById('submission-answer').value }
-    });
+    const fileInput = document.getElementById('submission-files');
+    if (fileInput && fileInput.files.length) {
+      const form = new FormData();
+      form.append('answer', document.getElementById('submission-answer').value);
+      Array.from(fileInput.files).forEach(file => form.append('files', file));
+      const response = await fetch(`/api/assignments/${id}/submissions/files`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` },
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Submission failed');
+    } else {
+      await api(`/assignments/${id}/submissions`, {
+        method: 'POST',
+        body: { answer: document.getElementById('submission-answer').value }
+      });
+    }
     closeModal();
     showToast('Assignment submitted');
     await loadAssignments();
@@ -1037,6 +1068,14 @@ const modalTemplates = {
           <label>Max Points</label>
           <input class="glass-input full-w" id="na-points" type="number" min="1" max="10000" value="100" required />
         </div>
+        <div class="modal-field">
+          <label>Passing Marks</label>
+          <input class="glass-input full-w" id="na-passing" type="number" min="0" max="10000" value="50" required />
+        </div>
+        <div class="modal-field">
+          <label>Instructions</label>
+          <textarea class="glass-textarea" id="na-instructions" rows="4" maxlength="20000"></textarea>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-outline" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn-primary">Create Assignment</button>
@@ -1171,7 +1210,9 @@ async function handleCreateAssignment(e) {
     type: document.getElementById('na-type').value,
     courseId: document.getElementById('na-courseId').value,
     due_date: document.getElementById('na-due').value,
-    max_points: parseInt(document.getElementById('na-points').value) || 100
+    max_points: parseInt(document.getElementById('na-points').value) || 100,
+    passing_marks: parseInt(document.getElementById('na-passing').value) || 0,
+    instructions: document.getElementById('na-instructions').value.trim()
   };
 
   try {
@@ -1289,7 +1330,20 @@ async function saveLesson(event) {
   };
   try {
     const path = `/courses/${courseId}/lessons${currentLessonId ? `/${currentLessonId}` : ''}`;
-    await api(path, { method: currentLessonId ? 'PUT' : 'POST', body });
+    const saved = await api(path, { method: currentLessonId ? 'PUT' : 'POST', body });
+    const lessonId = currentLessonId || saved.id;
+    const fileInput = document.getElementById('lesson-files');
+    if (fileInput && fileInput.files.length) {
+      const form = new FormData();
+      Array.from(fileInput.files).forEach(file => form.append('files', file));
+      const response = await fetch(`/api/materials/${courseId}/lessons/${lessonId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` },
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Material upload failed');
+    }
     showToast(currentLessonId ? 'Lesson updated' : 'Lesson added');
     currentLessonId = null;
     await loadCourseContent();
@@ -1308,6 +1362,108 @@ async function deleteLesson() {
     showToast('Lesson deleted');
     await loadCourseContent();
     await loadCourses();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadSettings() {
+  try {
+    const profile = await api('/profile/me');
+    const p = profile.profile || {};
+    document.getElementById('profile-name').value = p.name || profile.user.name || '';
+    document.getElementById('profile-email').value = p.email || profile.user.email || '';
+    document.getElementById('profile-phone').value = p.phone || '';
+    if (p.profilePhoto) document.getElementById('settings-avatar').src = p.profilePhoto;
+    await loadNotifications();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  try {
+    await api('/profile/me', {
+      method: 'PUT',
+      body: {
+        name: document.getElementById('profile-name').value,
+        email: document.getElementById('profile-email').value,
+        phone: document.getElementById('profile-phone').value
+      }
+    });
+    const photo = document.getElementById('profile-photo').files[0];
+    if (photo) {
+      const form = new FormData();
+      form.append('photo', photo);
+      const tokenValue = localStorage.getItem('eduflow_token');
+      const response = await fetch('/api/profile/photo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenValue}` },
+        body: form
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Photo upload failed');
+      document.getElementById('settings-avatar').src = data.profilePhoto + `?t=${Date.now()}`;
+    }
+    showToast('Profile updated');
+    await loadSettings();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function changePassword(event) {
+  event.preventDefault();
+  try {
+    await api('/profile/password', {
+      method: 'PUT',
+      body: {
+        currentPassword: document.getElementById('password-current').value,
+        newPassword: document.getElementById('password-new').value,
+        confirmPassword: document.getElementById('password-confirm').value
+      }
+    });
+    event.target.reset();
+    showToast('Password changed successfully');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const notifications = await api('/notifications');
+    const unread = notifications.filter(item => !item.read).length;
+    document.getElementById('notification-count').textContent = unread;
+    document.querySelector('.notif-dot').style.display = unread ? 'block' : 'none';
+    const list = document.getElementById('notification-list');
+    if (list) {
+      list.innerHTML = notifications.length ? notifications.map(item => `
+        <div class="activity-item" style="padding:10px;">
+          <div class="activity-dot"></div>
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p class="activity-text">${escapeHtml(item.message)}</p>
+            <span class="activity-time">${new Date(item.created_at).toLocaleString()}</span>
+          </div>
+        </div>`).join('') : '<p style="color:var(--text-dim);">You have no notifications.</p>';
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function toggleNotifications() {
+  navigate('settings');
+  setTimeout(loadNotifications, 50);
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await api('/notifications/read-all', { method: 'PUT' });
+    await loadNotifications();
+    showToast('Notifications marked as read');
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1341,6 +1497,7 @@ function renderActivity(text) {
     allowedPages = rolePages[currentUser.role] || [];
     initUser();
     navigate('dashboard');
+    loadNotifications();
   } catch (err) {
     showToast(err.message || 'Unable to verify your session', 'error');
     logout();

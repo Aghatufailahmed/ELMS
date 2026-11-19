@@ -286,6 +286,41 @@ test('role provisioning, lesson progress, assignment submissions, grading, and p
   assert.equal(gradedAssignment.mySubmission.score, 45);
   assert.equal(gradedAssignment.mySubmission.feedback, 'Good work');
 
+  const notificationResponse = await fetch(`${baseUrl}/api/notifications`, { headers: studentHeaders });
+  assert.equal(notificationResponse.status, 200);
+  assert.equal((await notificationResponse.json()).length >= 2, true);
+
+  const announcementResponse = await fetch(`${baseUrl}/api/announcements`, {
+    method: 'POST',
+    headers: instructorHeaders,
+    body: JSON.stringify({ title: 'Exam schedule', message: 'The exam starts next Monday.', courseId: course.id, audience: 'course' })
+  });
+  assert.equal(announcementResponse.status, 201);
+
+  const materialForm = new FormData();
+  materialForm.append('files', new Blob(['test lecture pdf'], { type: 'application/pdf' }), 'lecture.pdf');
+  const materialResponse = await fetch(`${baseUrl}/api/materials/${course.id}/lessons/${lesson.id}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${instructorData.token}` },
+    body: materialForm
+  });
+  assert.equal(materialResponse.status, 201);
+
+  const materialList = await fetch(`${baseUrl}/api/materials/${course.id}/lessons/${lesson.id}`, { headers: studentHeaders });
+  assert.equal(materialList.status, 200);
+  assert.equal((await materialList.json()).length, 1);
+
+  const passwordChange = await fetch(`${baseUrl}/api/profile/password`, {
+    method: 'PUT',
+    headers: { ...studentHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      currentPassword: 'student-password',
+      newPassword: 'UpdatedStudent123',
+      confirmPassword: 'UpdatedStudent123'
+    })
+  });
+  assert.equal(passwordChange.status, 200);
+
   const renameInstructor = await fetch(`${baseUrl}/api/instructors/${instructorProfile.id}`, {
     method: 'PUT',
     headers: adminHeaders,

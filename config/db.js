@@ -20,7 +20,20 @@ db.defaults({
   students:    [],
   instructors: [],
   assignments: [],
-  activity:    []
+  lecture_materials: [],
+  grading_scales: [
+    { id: 'default', name: 'University standard', ranges: [
+      { grade: 'A', min: 90, max: 100 },
+      { grade: 'B', min: 80, max: 89.99 },
+      { grade: 'C', min: 70, max: 79.99 },
+      { grade: 'D', min: 60, max: 69.99 },
+      { grade: 'F', min: 0, max: 59.99 }
+    ] }
+  ],
+  notifications: [],
+  announcements: [],
+  password_reset_tokens: [],
+  activity: []
 }).write();
 
 module.exports = db;
